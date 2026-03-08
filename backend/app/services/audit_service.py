@@ -7,8 +7,8 @@ and institutional security requirements.
 
 from datetime import datetime
 from flask import request, current_app
-from app import db
-from app.models import AuditLog
+from app.core.extensions import db
+from app.models.audit import AuditLog
 
 class AuditService:
     """Service for handling audit logging throughout the application"""

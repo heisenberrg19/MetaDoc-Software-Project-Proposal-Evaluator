@@ -21,7 +21,7 @@ from flask import Blueprint, request, jsonify, current_app
 from app.core.extensions import db
 from app.models import (
     Submission, AnalysisResult, DocumentSnapshot, Deadline, 
-    TimelinesssClassification, SubmissionStatus
+    TimelinessClassification, SubmissionStatus
 )
 from app.services.audit_service import AuditService
 from app.services import InsightsService

@@ -348,7 +348,7 @@ class NLPService:
                         # Fallback to text
                         return {'summary': response.text, 'raw_response': response.text}, None
                 else:
-                    return response.text, None
+                    return {'summary': response.text}, None
             else:
                 return None, "No response from Gemini"
                 
@@ -356,3 +356,59 @@ class NLPService:
             if current_app:
                 current_app.logger.error(f"Gemini AI summary failed: {e}")
             return None, str(e)
+
+    def consolidate_nlp_results(self, local_results, ai_summary=None):
+        """
+        Consolidate local NLP results and AI insights into a single report
+        
+        SRS Reference: M4.UC03 - Consolidate NLP & AI Outputs
+        """
+        try:
+            consolidated = {
+                'readability': local_results.get('readability'),
+                'token_analysis': local_results.get('token_analysis'),
+                'named_entities': local_results.get('named_entities'),
+                'sentiment': local_results.get('sentiment'),
+                'text_statistics': local_results.get('text_statistics'),
+                'language_info': local_results.get('language_info'),
+                'ai_insights': ai_summary,
+                'recommendations': []
+            }
+            
+            # Generate recommendations based on readability
+            if local_results.get('readability'):
+                fk_grade = local_results['readability'].get('grade_level', 0)
+                if fk_grade > 16:
+                    consolidated['recommendations'].append({
+                        'type': 'readability',
+                        'severity': 'low',
+                        'message': 'Text complexity is very high (Graduate level). Consider simplifying for better accessibility.'
+                    })
+                elif fk_grade < 8:
+                    consolidated['recommendations'].append({
+                        'type': 'readability',
+                        'severity': 'low',
+                        'message': 'Text complexity is low (Middle School level). Ensure it meets academic standards for your level.'
+                    })
+            
+            # Generate recommendations based on vocabulary
+            if local_results.get('token_analysis'):
+                richness = local_results['token_analysis'].get('vocabulary_richness', 1)
+                if richness < 0.4:
+                    consolidated['recommendations'].append({
+                        'type': 'vocabulary',
+                        'severity': 'medium',
+                        'message': 'Vocabulary richness is low. Consider using more varied terminology.'
+                    })
+            
+            # Merge AI recommendations if available
+            if ai_summary and isinstance(ai_summary, dict) and 'recommendations' in ai_summary:
+                for rec in ai_summary['recommendations']:
+                    consolidated['recommendations'].append(rec)
+            
+            return consolidated, None
+            
+        except Exception as e:
+            if current_app:
+                current_app.logger.error(f"Consolidation failed: {e}")
+            return local_results, str(e)

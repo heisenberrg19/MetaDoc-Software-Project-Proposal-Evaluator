@@ -5,7 +5,7 @@ Analysis-related models
 from datetime import datetime
 from sqlalchemy import Text, JSON
 from app.core.extensions import db
-from app.models.base import BaseModel, TimelinesssClassification
+from app.models.base import BaseModel, TimelinessClassification
 
 class AnalysisResult(BaseModel):
     """Analysis Result model - Stores all analysis outputs"""
@@ -20,7 +20,7 @@ class AnalysisResult(BaseModel):
     
     # Module 3: Rule-based Insights
     heuristic_insights = db.Column(JSON, nullable=True)
-    timeliness_classification = db.Column(db.Enum(TimelinesssClassification), nullable=True)
+    timeliness_classification = db.Column(db.Enum(TimelinessClassification), nullable=True)
     contribution_growth_percentage = db.Column(db.Float, nullable=True)
     
     # Module 4: NLP Analysis

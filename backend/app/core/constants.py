@@ -26,7 +26,7 @@ class SubmissionStatus:
     WARNING = "warning"
 
 # Timeliness Classification
-class TimelinesssClassification:
+class TimelinessClassification:
     ON_TIME = "on_time"
     LATE = "late"
     LAST_MINUTE_RUSH = "last_minute_rush"

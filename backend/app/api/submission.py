@@ -721,154 +721,84 @@ def submit_drive_link():
             
             # Extract metadata (using external Google Drive metadata for more accuracy)
             doc_metadata, metadata_error = metadata_service.extract_docx_metadata(storage_path, external_metadata=metadata)
-            if not metadata_error:
-                # Merge Google Drive metadata with document metadata
-                # Google Drive metadata has more accurate editor/owner information
-                if metadata.get('owners'):
-                    # Get the first owner's display name for legacy author field
-                    owner = metadata['owners'][0]
-                    if not doc_metadata.get('author') or doc_metadata['author'] == 'Unavailable':
-                        doc_metadata['author'] = owner.get('displayName', owner.get('emailAddress', 'Unavailable'))
+            
+            # Extract text
+            text, text_error = metadata_service.extract_document_text(storage_path)
+            if not text_error:
+                # Compute statistics
+                content_stats = metadata_service.compute_content_statistics(text)
+                is_complete, warnings = metadata_service.validate_document_completeness(content_stats, text)
+                
+                # Create or update analysis result
+                from app.models import AnalysisResult
+                analysis = AnalysisResult.query.filter_by(submission_id=submission.id).first()
+                if not analysis:
+                    analysis = AnalysisResult(submission_id=submission.id)
+                    db.session.add(analysis)
+                
+                analysis.document_metadata = doc_metadata
+                analysis.content_statistics = content_stats
+                analysis.document_text = text
+                analysis.is_complete_document = is_complete
+                analysis.validation_warnings = warnings
+                
+                # Mark as completed
+                submission.status = SubmissionStatus.COMPLETED
+                submission.processing_completed_at = datetime.utcnow()
+                db.session.commit()
+                
+                current_app.logger.info(f"Analysis completed for submission {submission.id}")
+                
+                # [INTEGRATION] Trigger AI Analysis IMMEDIATELY (Drive Link)
+                try:
+                    from app.api.nlp import get_nlp_service
+                    nlp_service = get_nlp_service()
                     
-                    # Capture full list of contributors (up to 5)
-                    doc_metadata['contributors'] = []
-                    # Add owners
-                    for owner in metadata['owners']:
-                        # Avoid duplicates if we process this list
-                        pass 
+                    # 1. Local NLP
+                    local_results = nlp_service.perform_local_nlp_analysis(text)
                     
-                    # We'll build a unique list of contributors
-                # Start with owners
-                    seen_emails = set()
+                    # 2. AI Analysis (with Rubric if available)
+                    rubric_data = None
+                    context = {}
                     
-                    if not doc_metadata.get('contributors'):
-                        doc_metadata['contributors'] = []
+                    if submission.deadline_id:
+                        from app.models import Deadline
+                        deadline = Deadline.query.get(submission.deadline_id)
+                        if deadline:
+                            context = {
+                                'assignment_type': deadline.assignment_type,
+                                'course_code': deadline.course_code
+                            }
+                            if deadline.rubric:
+                                rubric_data = deadline.rubric.to_dict()
+                                current_app.logger.info(f"Using rubric '{deadline.rubric.title}' for AI analysis (Drive)")
+                    
+                    # Generate Summary & Rating
+                    ai_summary, ai_error = nlp_service.generate_ai_summary(text, context, rubric=rubric_data)
+                    
+                    if ai_error:
+                         current_app.logger.warning(f"AI analysis warning: {ai_error}")
 
-                    for owner in metadata.get('owners', []):
-                         email = owner.get('emailAddress', '')
-                         if email and email not in seen_emails:
-                             doc_metadata['contributors'].append({
-                                 'name': owner.get('displayName', email),
-                                 'role': 'Owner and Writer',
-                                 'email': email
-                             })
-                             seen_emails.add(email)
-                
-                if metadata.get('lastModifyingUser'):
-                    # Get the last editor from Google Drive
-                    last_user = metadata['lastModifyingUser']
-                    doc_metadata['last_editor'] = last_user.get('displayName', last_user.get('emailAddress', 'Unavailable'))
+                    # 3. Consolidate
+                    consolidated_results = local_results
+                    if hasattr(nlp_service, 'consolidate_nlp_results'):
+                        consolidated_results, _ = nlp_service.consolidate_nlp_results(local_results, ai_summary)
                     
-                    # Add to contributors if unique
-                    email = last_user.get('emailAddress', '')
-                    if email and email not in seen_emails:
-                         doc_metadata['contributors'].append({
-                             'name': last_user.get('displayName', email),
-                             'role': 'Last Editor',
-                             'email': email
-                         })
-                         seen_emails.add(email)
-                
-                # Check permissions list for other contributors
-                if metadata.get('permissions'):
-                    for perm in metadata['permissions']:
-                        email = perm.get('emailAddress', '')
-                        if email and email not in seen_emails:
-                            role = perm.get('role', 'Viewer').capitalize()
-                            doc_metadata['contributors'].append({
-                                'name': perm.get('displayName', email),
-                                'role': role,
-                                'email': email
-                            })
-                            seen_emails.add(email)
-                
-                # Limit to 5 contributors
-                doc_metadata['contributors'] = doc_metadata.get('contributors', [])[:5]
-                
-                # Use Google Drive timestamps if document timestamps are missing
-                if metadata.get('createdTime') and not doc_metadata.get('creation_date'):
-                    doc_metadata['creation_date'] = metadata['createdTime']
-                
-                if metadata.get('modifiedTime'):
-                    doc_metadata['last_modified_date'] = metadata['modifiedTime']
-                
-                # Extract text
-                text, text_error = metadata_service.extract_document_text(storage_path)
-                if not text_error:
-                    # Compute statistics
-                    content_stats = metadata_service.compute_content_statistics(text)
-                    is_complete, warnings = metadata_service.validate_document_completeness(content_stats, text)
-                    
-                    # Create or update analysis result
-                    from app.models import AnalysisResult
-                    analysis = AnalysisResult.query.filter_by(submission_id=submission.id).first()
-                    if not analysis:
-                        analysis = AnalysisResult(submission_id=submission.id)
-                        db.session.add(analysis)
-                    
-                    analysis.document_metadata = doc_metadata
-                    analysis.content_statistics = content_stats
-                    analysis.document_text = text
-                    analysis.is_complete_document = is_complete
-                    analysis.validation_warnings = warnings
-                    
-                    # Mark as completed
-                    submission.status = SubmissionStatus.COMPLETED
-                    submission.processing_completed_at = datetime.utcnow()
+                    # 4. Save to DB
+                    analysis.nlp_results = consolidated_results
+                    if ai_summary:
+                        analysis.ai_summary = ai_summary.get('summary')
+                        analysis.ai_insights = ai_summary
+
+                    if 'readability' in local_results and local_results['readability']:
+                         analysis.flesch_kincaid_score = local_results['readability'].get('grade_level')
+                         analysis.readability_grade = local_results['readability'].get('reading_level')
+
                     db.session.commit()
+                    current_app.logger.info(f"AI Rating & NLP analysis completed for submission {submission.id} (Drive)")
                     
-                    current_app.logger.info(f"Analysis completed for submission {submission.id}")
-                    
-                    # [INTEGRATION] Trigger AI Analysis IMMEDIATELY (Drive Link)
-                    try:
-                        from app.api.nlp import get_nlp_service
-                        nlp_service = get_nlp_service()
-                        
-                        # 1. Local NLP
-                        local_results = nlp_service.perform_local_nlp_analysis(text)
-                        
-                        # 2. AI Analysis (with Rubric if available)
-                        rubric_data = None
-                        context = {}
-                        
-                        if submission.deadline_id:
-                            from app.models import Deadline
-                            deadline = Deadline.query.get(submission.deadline_id)
-                            if deadline:
-                                context = {
-                                    'assignment_type': deadline.assignment_type,
-                                    'course_code': deadline.course_code
-                                }
-                                if deadline.rubric:
-                                    rubric_data = deadline.rubric.to_dict()
-                                    current_app.logger.info(f"Using rubric '{deadline.rubric.title}' for AI analysis (Drive)")
-                        
-                        # Generate Summary & Rating
-                        ai_summary, ai_error = nlp_service.generate_ai_summary(text, context, rubric=rubric_data)
-                        
-                        if ai_error:
-                             current_app.logger.warning(f"AI analysis warning: {ai_error}")
-
-                        # 3. Consolidate
-                        consolidated_results = local_results
-                        if hasattr(nlp_service, 'consolidate_nlp_results'):
-                            consolidated_results, _ = nlp_service.consolidate_nlp_results(local_results, ai_summary)
-                        
-                        # 4. Save to DB
-                        analysis.nlp_results = consolidated_results
-                        if ai_summary:
-                            analysis.ai_summary = ai_summary.get('summary')
-                            analysis.ai_insights = ai_summary
-
-                        if 'readability' in local_results and local_results['readability']:
-                             analysis.flesch_kincaid_score = local_results['readability'].get('grade_level')
-                             analysis.readability_grade = local_results['readability'].get('reading_level')
-
-                        db.session.commit()
-                        current_app.logger.info(f"AI Rating & NLP analysis completed for submission {submission.id} (Drive)")
-                        
-                    except Exception as nlp_e:
-                        current_app.logger.error(f"Post-upload AI analysis failed (Drive): {nlp_e}")
+                except Exception as nlp_e:
+                    current_app.logger.error(f"Post-upload AI analysis failed (Drive): {nlp_e}")
         except Exception as e:
             current_app.logger.error(f"Auto-analysis failed: {e}")
             # Don't fail the upload, just log the error

@@ -97,8 +97,8 @@ def analyze_nlp(submission_id):
         analysis_result.nlp_results = consolidated_results
         
         # Extract key fields for database
-        if 'readability' in local_results and 'scores' in local_results['readability']:
-            analysis_result.flesch_kincaid_score = local_results['readability']['scores'].get('flesch_kincaid_grade')
+        if 'readability' in local_results and local_results['readability']:
+            analysis_result.flesch_kincaid_score = local_results['readability'].get('flesch_kincaid_grade')
             analysis_result.readability_grade = local_results['readability'].get('reading_level')
         
         if 'named_entities' in local_results:

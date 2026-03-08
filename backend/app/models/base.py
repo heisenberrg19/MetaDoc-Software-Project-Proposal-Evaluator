@@ -16,7 +16,7 @@ class SubmissionStatus(PyEnum):
     FAILED = "failed"
     WARNING = "warning"
 
-class TimelinesssClassification(PyEnum):
+class TimelinessClassification(PyEnum):
     ON_TIME = "on_time"
     LATE = "late"
     LAST_MINUTE_RUSH = "last_minute_rush"

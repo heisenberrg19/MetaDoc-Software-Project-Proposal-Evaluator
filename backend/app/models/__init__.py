@@ -15,7 +15,7 @@ This package contains all database models organized by domain:
 from app.models.base import (
     BaseModel,
     SubmissionStatus,
-    TimelinesssClassification,
+    TimelinessClassification,
     UserRole
 )
 
@@ -34,7 +34,7 @@ __all__ = [
     # Base
     'BaseModel',
     'SubmissionStatus',
-    'TimelinesssClassification',
+    'TimelinessClassification',
     'UserRole',
     # Models
     'User',

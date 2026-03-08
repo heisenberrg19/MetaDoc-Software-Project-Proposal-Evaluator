@@ -12,7 +12,7 @@ import pytz
 from app.core.extensions import db
 from app.models import (
     Submission, AnalysisResult, Deadline, DocumentSnapshot,
-    SubmissionStatus, TimelinesssClassification, Student
+    SubmissionStatus, TimelinessClassification, Student
 )
 
 
@@ -87,13 +87,13 @@ class DashboardService:
             }
             
             for classification, count in results:
-                if classification == TimelinesssClassification.ON_TIME:
+                if classification == TimelinessClassification.ON_TIME:
                     stats['on_time'] = count
-                elif classification == TimelinesssClassification.LATE:
+                elif classification == TimelinessClassification.LATE:
                     stats['late'] = count
-                elif classification == TimelinesssClassification.LAST_MINUTE_RUSH:
+                elif classification == TimelinessClassification.LAST_MINUTE_RUSH:
                     stats['last_minute'] = count
-                elif classification == TimelinesssClassification.NO_DEADLINE:
+                elif classification == TimelinessClassification.NO_DEADLINE:
                     stats['no_deadline'] = count
             
             return stats

@@ -48,7 +48,50 @@ class MetadataService:
             'application': 'Unknown',
             'contributors': []
         }
-        
+
+        # [HELPER] Robust contributor deduplication and merging
+        def add_contributor(name, role, email=None, date=None):
+            if not name: return
+            
+            # 1. Basic cleaning
+            name = str(name).strip()
+            if not name or name.lower() in ['unavailable', 'none', 'python-docx', 'unknown', '']:
+                return
+            
+            # 2. Advanced normalization (whitespace and case)
+            norm_name = re.sub(r'\s+', ' ', name).strip().lower()
+            norm_email = str(email).strip().lower() if email else None
+            
+            # 3. Check for existing record to merge or skip
+            for entry in metadata['contributors']:
+                # Ensure entry is a dict
+                if not isinstance(entry, dict): continue
+                
+                existing_name = re.sub(r'\s+', ' ', str(entry.get('name', ''))).strip().lower()
+                existing_email = str(entry.get('email', '')).strip().lower() if entry.get('email') else None
+                
+                # Match by NAME or EMAIL
+                match_found = (norm_name == existing_name) or (norm_email and existing_email and norm_email == existing_email)
+                
+                if match_found:
+                    # Enrich existing record
+                    if not entry.get('email') and email: entry['email'] = email
+                    if not entry.get('date') and date: entry['date'] = date
+                    
+                    # Prefer informative roles (Owner/Editor over Contributor/Author)
+                    high_priority_roles = ['Owner', 'Last Editor', 'Editor']
+                    if role in high_priority_roles and entry.get('role') not in high_priority_roles:
+                        entry['role'] = role
+                    return
+
+            # 4. Add new unique entry
+            metadata['contributors'].append({
+                'name': name, # Keep original casing for display
+                'role': role,
+                'email': email,
+                'date': date
+            })
+
         parsing_error = None
         
         try:
@@ -87,29 +130,24 @@ class MetadataService:
                         try:
                             app_xml = zip_file.read('docProps/app.xml')
                             app_root = ET.fromstring(app_xml)
-                            
-                            # Find all text elements to handle namespaces
                             all_text = {elem.tag.split('}')[-1]: elem.text for elem in app_root.iter()}
                             
                             if 'Application' in all_text:
                                 metadata['application'] = all_text['Application']
                             if 'Words' in all_text:
-                                try:
-                                    metadata['word_count'] = int(all_text['Words'])
+                                try: metadata['word_count'] = int(all_text['Words'])
                                 except: pass
                             if 'TotalTime' in all_text:
-                                try:
-                                    metadata['editing_time_minutes'] = int(all_text['TotalTime'])
+                                try: metadata['editing_time_minutes'] = int(all_text['TotalTime'])
                                 except: pass
                         except Exception as e:
                             current_app.logger.warning(f"Error parsing app.xml: {e}")
                     
-                    # Read core properties for additional timestamps if python-docx missed them
+                    # Read core properties XML
                     if 'docProps/core.xml' in zip_file.namelist():
                         try:
                             core_xml = zip_file.read('docProps/core.xml')
                             core_root = ET.fromstring(core_xml)
-                            
                             for elem in core_root.iter():
                                 tag = elem.tag.split('}')[-1]
                                 text = elem.text
@@ -124,12 +162,7 @@ class MetadataService:
                                 elif tag == 'creator' and metadata['author'] == 'Unavailable':
                                     metadata['author'] = text
                                 elif tag == 'contributor':
-                                    if text not in [c['name'] for c in metadata['contributors']]:
-                                        metadata['contributors'].append({
-                                            'name': text,
-                                            'role': 'Contributor',
-                                            'date': None
-                                        })
+                                    add_contributor(text, 'Contributor')
                         except Exception as e:
                             current_app.logger.warning(f"Error parsing core.xml: {e}")
             except Exception as e:
@@ -140,115 +173,96 @@ class MetadataService:
             parsing_error = str(e)
             metadata['parsing_error'] = parsing_error
 
-        # [ALWAYS RUN] Cleanup and Fallback Logic
-        
-        # Fallback: If last_editor is still Unavailable, use author if available
-        if metadata['last_editor'] == 'Unavailable' and metadata['author'] != 'Unavailable':
-            metadata['last_editor'] = metadata['author']
-        
-        # Cleanup 'python-docx' default value
-        if metadata['last_editor'] and 'python-docx' in str(metadata['last_editor']):
-            metadata['last_editor'] = 'Unavailable'
-        if metadata['author'] and 'python-docx' in str(metadata['author']):
-            metadata['author'] = 'Unavailable'
-
-        # Integrate external metadata (e.g. from Google Drive)
+        # [DEDUP] Preference: External (Drive) Metadata > Internal Metadata
         if external_metadata:
-            seen_emails = set()
+            # Sync basic dates if internal ones are missing
+            if not metadata['creation_date']:
+                metadata['creation_date'] = external_metadata.get('createdTime')
+            if not metadata['last_modified_date']:
+                metadata['last_modified_date'] = external_metadata.get('modifiedTime')
+                
+            # Prefer Drive IDs for Author/Editor if internal ones are default
+            if metadata['author'] == 'Unavailable':
+                owners = external_metadata.get('owners', [])
+                if owners:
+                    metadata['author'] = owners[0].get('displayName') or owners[0].get('emailAddress') or 'Unavailable'
             
-            # 1. Update basic fields if internal ones are missing
-            if metadata['author'] == 'Unavailable' and 'owners' in external_metadata:
-                owners = external_metadata['owners']
-                if owners and len(owners) > 0:
-                    metadata['author'] = owners[0].get('displayName', 'Unavailable')
-            
-            if metadata['last_editor'] == 'Unavailable' and 'lastModifyingUser' in external_metadata:
-                 lmu = external_metadata['lastModifyingUser']
+            if metadata['last_editor'] == 'Unavailable':
+                 lmu = external_metadata.get('lastModifyingUser')
                  if lmu:
-                     metadata['last_editor'] = lmu.get('displayName', 'Unavailable')
-            
-            if not metadata['creation_date'] and 'createdTime' in external_metadata:
-                metadata['creation_date'] = external_metadata['createdTime']
-            
-            if not metadata['last_modified_date'] and 'modifiedTime' in external_metadata:
-                metadata['last_modified_date'] = external_metadata['modifiedTime']
+                     metadata['last_editor'] = lmu.get('displayName') or lmu.get('emailAddress') or 'Unavailable'
 
-            # 2. Add all Drive owners as contributors
-            if 'owners' in external_metadata:
-                for owner in external_metadata['owners']:
-                    name = owner.get('displayName')
-                    email = owner.get('emailAddress')
-                    if name and name not in [c['name'] for c in metadata['contributors']]:
-                        metadata['contributors'].append({
-                            'name': name,
-                            'role': 'Owner',
-                            'email': email,
-                            'date': external_metadata.get('createdTime')
-                        })
-                        if email: seen_emails.add(email)
+            # Add Drive people via the deduplicating helper
+            # Owners
+            for owner in external_metadata.get('owners', []):
+                add_contributor(
+                    name=owner.get('displayName') or owner.get('emailAddress'),
+                    role='Owner',
+                    email=owner.get('emailAddress'),
+                    date=external_metadata.get('createdTime')
+                )
             
-            # 3. Add last modifying user as contributor
-            if 'lastModifyingUser' in external_metadata:
-                lmu = external_metadata['lastModifyingUser']
-                name = lmu.get('displayName')
-                email = lmu.get('emailAddress')
-                if name and email not in seen_emails:
-                    metadata['contributors'].append({
-                        'name': name,
-                        'role': 'Last Editor',
-                        'email': email,
-                        'date': external_metadata.get('modifiedTime')
-                    })
-                    if email: seen_emails.add(email)
+            # Last Editor (Drive)
+            lmu = external_metadata.get('lastModifyingUser')
+            if lmu:
+                add_contributor(
+                    name=lmu.get('displayName') or lmu.get('emailAddress'),
+                    role='Last Editor',
+                    email=lmu.get('emailAddress'),
+                    date=external_metadata.get('modifiedTime')
+                )
 
-            # 4. Add other collaborators from permissions
-            if 'permissions' in external_metadata:
-                for perm in external_metadata['permissions']:
-                    email = perm.get('emailAddress')
-                    name = perm.get('displayName', email)
-                    if name and email and email not in seen_emails:
-                        metadata['contributors'].append({
-                            'name': name,
-                            'role': perm.get('role', 'contributor').capitalize(),
-                            'email': email,
-                            'date': None
-                        })
-                        seen_emails.add(email)
-        
-        # Populate contributors from internal fallback if still empty or missing author/editor
+            # Permissions (all collaborators)
+            for perm in external_metadata.get('permissions', []):
+                add_contributor(
+                    name=perm.get('displayName') or perm.get('emailAddress'),
+                    role=perm.get('role', 'contributor').capitalize(),
+                    email=perm.get('emailAddress')
+                )
+
+        # [FINAL FALLBACK] Auth/Editor cleanup
+        for field in ['author', 'last_editor']:
+            val = str(metadata.get(field, ''))
+            if not val or val.strip() == '' or 'python-docx' in val.lower() or val.lower() == 'none' or val.lower() == 'unavailable':
+                metadata[field] = 'Unavailable'
+            else:
+                metadata[field] = val.strip()
+
+        # If Author/Editor are still Unavailable, try to pick from contributors
+        if metadata['contributors']:
+            if metadata['author'] == 'Unavailable':
+                # Prefer Owner or Author
+                potential_author = next((c for c in metadata['contributors'] if c.get('role') in ['Owner', 'Author']), metadata['contributors'][0])
+                metadata['author'] = potential_author.get('name', 'Unavailable')
+            
+            if metadata['last_editor'] == 'Unavailable':
+                # Prefer Last Editor or Editor
+                # Reverse list to get the most recent one if multiple exist
+                potential_editor = next((c for c in reversed(metadata['contributors']) if c.get('role') in ['Last Editor', 'Editor']), metadata['contributors'][-1])
+                metadata['last_editor'] = potential_editor.get('name', 'Unavailable')
+
+        # Sync back to contributors one last time to ensure author/editor are listed with roles
         if metadata['author'] != 'Unavailable':
-             if metadata['author'] not in [c['name'] for c in metadata['contributors']]:
-                metadata['contributors'].append({
-                    'name': metadata['author'], 
-                    'role': 'Author',
-                    'date': metadata['creation_date']
-                })
-        
+            add_contributor(metadata['author'], 'Author', date=metadata['creation_date'])
         if metadata['last_editor'] != 'Unavailable':
-            if metadata['last_editor'] not in [c['name'] for c in metadata['contributors']]:
-                metadata['contributors'].append({
-                    'name': metadata['last_editor'], 
-                    'role': 'Editor',
-                    'date': metadata['last_modified_date']
-                })
-        
-        # Limit to 10 contributors for display sanity
-        metadata['contributors'] = metadata['contributors'][:10]
-        
-        # [Fallback] Filesystem timestamps if document metadata is missing
+            add_contributor(metadata['last_editor'], 'Editor', date=metadata['last_modified_date'])
+
+        # Final filesystem fallback for dates
         if not metadata['creation_date']:
             try:
                 c_time = os.path.getctime(file_path)
                 metadata['creation_date'] = datetime.fromtimestamp(c_time).isoformat()
             except Exception: pass
-        
         if not metadata['last_modified_date']:
             try:
                 m_time = os.path.getmtime(file_path)
                 metadata['last_modified_date'] = datetime.fromtimestamp(m_time).isoformat()
             except Exception: pass
             
-        # Return whatever we managed to extract
+        # Limit to 10 unique contributors
+        if isinstance(metadata['contributors'], list):
+            metadata['contributors'] = metadata['contributors'][:10]
+        
         return metadata, None
 
     

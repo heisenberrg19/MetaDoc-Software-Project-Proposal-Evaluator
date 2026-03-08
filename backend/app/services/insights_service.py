@@ -8,7 +8,7 @@ import pytz
 from datetime import datetime, timedelta
 from flask import current_app
 
-from app.models import DocumentSnapshot, TimelinesssClassification
+from app.models import DocumentSnapshot, TimelinessClassification
 
 
 class InsightsService:
@@ -22,7 +22,7 @@ class InsightsService:
         """Evaluate timeliness of submission against deadline"""
         if not deadline:
             return {
-                'classification': TimelinesssClassification.NO_DEADLINE,
+                'classification': TimelinessClassification.NO_DEADLINE,
                 'message': 'No deadline set for this submission',
                 'details': None
             }
@@ -64,13 +64,13 @@ class InsightsService:
                 time_before_deadline = abs(time_difference)
                 
                 if time_before_deadline <= timedelta(hours=self.last_minute_threshold_hours):
-                    classification = TimelinesssClassification.LAST_MINUTE_RUSH
+                    classification = TimelinessClassification.LAST_MINUTE_RUSH
                     message = f"Last-minute submission (submitted {self._format_time_difference(time_before_deadline)} before deadline)"
                 else:
-                    classification = TimelinesssClassification.ON_TIME
+                    classification = TimelinessClassification.ON_TIME
                     message = f"On-time submission (submitted {self._format_time_difference(time_before_deadline)} before deadline)"
             else:
-                classification = TimelinesssClassification.LATE
+                classification = TimelinessClassification.LATE
                 message = f"Late submission (submitted {self._format_time_difference(time_difference)} after deadline)"
             
             return {
@@ -91,7 +91,7 @@ class InsightsService:
         except Exception as e:
             current_app.logger.error(f"Timeliness evaluation error: {e}")
             return {
-                'classification': TimelinesssClassification.NO_DEADLINE,
+                'classification': TimelinessClassification.NO_DEADLINE,
                 'message': f'Error evaluating timeliness: {e}',
                 'details': None
             }
@@ -198,3 +198,83 @@ class InsightsService:
             return 'Minor Changes'
         else:
             return 'Minimal Changes'
+            
+    def generate_heuristic_insights(self, submission, deadline=None):
+        """
+        Generate comprehensive heuristic insights for a submission
+        
+        SRS Reference: M3.UC03 - Generate & Persist Heuristic Insights
+        """
+        try:
+            # 1. Evaluate timeliness
+            timeliness = self.evaluate_submission_timeliness(submission, deadline)
+            
+            # 2. Compute contribution growth
+            contribution = self.compute_contribution_growth(submission)
+            
+            # 3. Aggregate flags and formulate overall assessment
+            flags = []
+            
+            if timeliness['classification'] == TimelinessClassification.LATE:
+                flags.append({
+                    'type': 'timeliness',
+                    'severity': 'high',
+                    'message': 'Submission is late'
+                })
+            elif timeliness['classification'] == TimelinessClassification.LAST_MINUTE_RUSH:
+                flags.append({
+                    'type': 'timeliness',
+                    'severity': 'medium',
+                    'message': 'Last-minute rush detected (significant changes within 1 hour of deadline)'
+                })
+                
+            if contribution['has_comparison']:
+                if contribution['is_major_contribution']:
+                    flags.append({
+                        'type': 'contribution',
+                        'severity': 'low',
+                        'message': f"Major contribution detected: {contribution['change_percentage']}% change"
+                    })
+                elif contribution['change_percentage'] < 0:
+                    flags.append({
+                        'type': 'contribution',
+                        'severity': 'medium',
+                        'message': f"Significant content reduction: {abs(contribution['change_percentage'])}% removed"
+                    })
+            
+            # Determine confidence level
+            confidence_level = 'high'
+            if timeliness['classification'] == TimelinessClassification.NO_DEADLINE:
+                confidence_level = 'medium'
+            
+            insights = {
+                'timeliness': timeliness,
+                'contribution_analysis': contribution,
+                'overall_assessment': {
+                    'flags': flags,
+                    'summary': self._generate_insight_summary(timeliness, contribution),
+                    'confidence_level': confidence_level,
+                    'generated_at': datetime.utcnow().isoformat()
+                }
+            }
+            
+            return insights, None
+            
+        except Exception as e:
+            current_app.logger.error(f"Heuristic insights generation error: {e}")
+            return None, str(e)
+
+    def _generate_insight_summary(self, timeliness, contribution):
+        """Generate a human-readable summary of insights"""
+        summary_parts = []
+        
+        # Timeliness part
+        summary_parts.append(timeliness['message'])
+        
+        # Contribution part
+        if contribution['has_comparison']:
+            summary_parts.append(f"The document shows a {contribution['contribution_type']} with a {contribution['change_percentage']}% change in word count.")
+        else:
+            summary_parts.append("This is a new document submission with no previous versions for comparison.")
+            
+        return " ".join(summary_parts)

@@ -18,7 +18,7 @@ import os
 from app.core.extensions import db
 from app.models import (
     Submission, AnalysisResult, Deadline, User, DocumentSnapshot, AuditLog,
-    SubmissionStatus, TimelinesssClassification, UserRole
+    SubmissionStatus, TimelinessClassification, UserRole
 )
 from app.services.audit_service import AuditService
 from app.services import DashboardService, DriveService, SubmissionService
@@ -196,10 +196,30 @@ def get_submission_detail(submission_id):
                                     from flask import session
                                     drive_service = DriveService()
                                     
-                                    # Use logged-in user's credentials if available to get better metadata (like emails)
-                                    user_creds = session.get('google_credentials')
+                                    # Use the current request's session object which has the persisted tokens
+                                    user_creds = None
+                                    if hasattr(request, 'current_session') and request.current_session:
+                                        curr_sess = request.current_session
+                                        if curr_sess.google_access_token:
+                                            try:
+                                                import json
+                                                creds_dict = {
+                                                    "token": curr_sess.google_access_token,
+                                                    "refresh_token": curr_sess.google_refresh_token,
+                                                    "token_uri": "https://oauth2.googleapis.com/token",
+                                                    "client_id": current_app.config.get('GOOGLE_CLIENT_ID'),
+                                                    "client_secret": current_app.config.get('GOOGLE_CLIENT_SECRET'),
+                                                    "scopes": ['https://www.googleapis.com/auth/drive.readonly']
+                                                }
+                                                user_creds = json.dumps(creds_dict)
+                                            except Exception as json_err:
+                                                current_app.logger.warning(f"Failed to format credentials: {json_err}")
                                     
-                                    # Try to fetch GDrive metadata 
+                                    # Fallback to flask session if current_session is missing
+                                    if not user_creds:
+                                        user_creds = session.get('google_credentials')
+                                    
+                                    # Try to fetch GDrive metadata with credentials
                                     g_meta, g_error = drive_service.get_file_metadata(file_id, user_credentials_json=user_creds)
                                     
                                     if g_meta and not g_error:
@@ -221,33 +241,28 @@ def get_submission_detail(submission_id):
                                                 # Explicit commit for filename change
                                                 db.session.commit()
 
-                                        # Got real GDrive data!
-                                        if 'owners' in g_meta and g_meta['owners']:
-                                            owner = g_meta['owners'][0]
-                                            owner_display = f"{owner.get('displayName')} ({owner.get('emailAddress')})"
-                                            new_metadata['author'] = owner_display
-                                            
-                                            # Add to contributors
-                                            new_metadata['contributors'] = [{
-                                                'name': owner.get('displayName'),
-                                                'email': owner.get('emailAddress'),
-                                                'role': 'Owner (Google Drive)',
-                                                'date': new_metadata.get('creation_date')
-                                            }]
+                                        # Got real GDrive data! Use extracted metadata with GDrive augmentation
+                                        # Use the improved MetadataService logic by calling it again with GDrive meta
+                                        new_metadata, err = meta_service.extract_docx_metadata(processing_path, external_metadata=g_meta)
                                         
-                                        if 'lastModifyingUser' in g_meta:
-                                            mod_user = g_meta['lastModifyingUser']
-                                            mod_display = f"{mod_user.get('displayName')} ({mod_user.get('emailAddress')})"
-                                            new_metadata['last_editor'] = mod_display
+                                        if not err and new_metadata:
+                                            # Successfully merged GDrive info into metadata
+                                            pass 
+                                        else:
+                                            # Fallback to manual merge if re-extraction fails (redundancy)
+                                            if 'owners' in g_meta and g_meta['owners']:
+                                                owner = g_meta['owners'][0]
+                                                owner_display = f"{owner.get('displayName')}"
+                                                if owner.get('emailAddress'):
+                                                    owner_display += f" ({owner.get('emailAddress')})"
+                                                new_metadata['author'] = owner_display
                                             
-                                            # Add unique editor to contributors
-                                            if not new_metadata['contributors'] or new_metadata['contributors'][0].get('email') != mod_user.get('emailAddress'):
-                                                new_metadata['contributors'].append({
-                                                    'name': mod_user.get('displayName'),
-                                                    'email': mod_user.get('emailAddress'),
-                                                    'role': 'Last Editor (Google Drive)',
-                                                    'date': new_metadata.get('last_modified_date')
-                                                })
+                                            if 'lastModifyingUser' in g_meta:
+                                                mod_user = g_meta['lastModifyingUser']
+                                                mod_display = f"{mod_user.get('displayName')}"
+                                                if mod_user.get('emailAddress'):
+                                                    mod_display += f" ({mod_user.get('emailAddress')})"
+                                                new_metadata['last_editor'] = mod_display
 
                             except Exception as drive_err:
                                 current_app.logger.warning(f"Could not fetch GDrive specific metadata: {drive_err}")
