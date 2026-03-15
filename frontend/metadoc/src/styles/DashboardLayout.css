@@ -304,7 +304,7 @@
 }
 
 .team-modal.team-modal-wide {
-  width: min(860px, 100%);
+  width: min(980px, 100%);
 }
 
 /* Left panel — always visible */
@@ -317,7 +317,7 @@
 }
 
 .team-modal-wide .team-panel-left {
-  flex: 0 0 460px;
+  flex: 0 0 500px;
 }
 
 /* Right panel — slides in */
@@ -436,8 +436,8 @@
 }
 
 .team-member-photo-large {
-  width: 148px;
-  height: 148px;
+  width: 210px;
+  height: 210px;
   border-radius: 50%;
   object-fit: cover;
   image-rendering: auto;
@@ -475,8 +475,8 @@
 }
 
 .team-card-avatar {
-  width: 64px;
-  height: 64px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   object-fit: cover;
   image-rendering: auto;

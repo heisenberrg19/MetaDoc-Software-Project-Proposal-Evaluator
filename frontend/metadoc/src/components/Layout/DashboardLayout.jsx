@@ -132,7 +132,6 @@ const DashboardLayout = ({ children }) => {
           </button>
           <div className="sidebar-version">MetaDoc V1.0</div>
           <div className="sidebar-cit">
-            <img src={citLogo} alt="CIT University" width={20} height={20} style={{ objectFit: 'contain', opacity: 0.75 }} />
             <span>CIT University</span>
           </div>
         </div>

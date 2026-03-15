@@ -41,6 +41,13 @@ const formatStudentId = (input) => {
   return result || input;
 };
 
+const normalizeContributorRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'author' || normalized === 'owner') return 'Author';
+  if (['editor', 'last editor', 'writer', 'contributor', 'commenter', 'reader'].includes(normalized)) return 'Editor';
+  return 'Editor';
+};
+
 const Deliverable = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -935,7 +942,7 @@ const Deliverable = () => {
                       {previewSubmission.analysis_result?.document_metadata?.contributors ? (
                         previewSubmission.analysis_result.document_metadata.contributors.map((c, i) => (
                           <div key={i} className="contributor-row">
-                            <strong>{c.name}</strong> <span>({c.role || 'Contributor'})</span>
+                            <strong>{c.name}</strong> <span>({normalizeContributorRole(c.role)})</span>
                           </div>
                         ))
                       ) : (

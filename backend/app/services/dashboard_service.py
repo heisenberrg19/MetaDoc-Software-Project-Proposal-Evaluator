@@ -155,6 +155,9 @@ class DashboardService:
             recent = []
             for s in submissions:
                 student_row = students_by_sid.get(_norm_student_id(s.student_id))
+                created_at_iso = s.created_at.isoformat() if s.created_at else None
+                if created_at_iso and not created_at_iso.endswith('Z') and '+' not in created_at_iso:
+                    created_at_iso += 'Z'
                 recent.append({
                     'id': s.id,
                     'job_id': s.job_id,
@@ -164,7 +167,7 @@ class DashboardService:
                     'student_id': s.student_id,
                     'team_code': student_row.team_code if student_row and student_row.team_code else None,
                     'status': s.status.value,
-                    'created_at': s.created_at.isoformat()
+                    'created_at': created_at_iso
                 })
 
             return recent

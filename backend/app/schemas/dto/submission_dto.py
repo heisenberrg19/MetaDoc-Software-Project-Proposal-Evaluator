@@ -6,6 +6,79 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 
+def _normalize_iso_datetime(value: Any) -> Optional[str]:
+    """Return ISO-like datetime with UTC suffix when timezone is missing."""
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        iso_value = value.isoformat()
+    else:
+        iso_value = str(value).strip()
+
+    if not iso_value:
+        return None
+
+    if not iso_value.endswith('Z') and '+' not in iso_value:
+        iso_value += 'Z'
+
+    return iso_value
+
+
+def _resolve_last_modified_iso(submission) -> Optional[str]:
+    """Prefer document metadata modified date, fallback to submission timestamps."""
+    metadata_modified = None
+    latest_contributor_date = None
+
+    def _parse_iso_candidate(date_value):
+        if not date_value:
+            return None
+        try:
+            normalized = str(date_value).strip().replace('Z', '+00:00')
+            return datetime.fromisoformat(normalized)
+        except Exception:
+            return None
+
+    if hasattr(submission, 'analysis_result') and submission.analysis_result:
+        metadata = submission.analysis_result.document_metadata or {}
+        metadata_modified = metadata.get('last_modified_date') or metadata.get('modified_date')
+
+        contributors = metadata.get('contributors') if isinstance(metadata, dict) else None
+        if isinstance(contributors, list):
+            for contributor in contributors:
+                if not isinstance(contributor, dict):
+                    continue
+                contributor_date = contributor.get('date')
+                parsed_contributor_date = _parse_iso_candidate(contributor_date)
+                if parsed_contributor_date and (latest_contributor_date is None or parsed_contributor_date > latest_contributor_date):
+                    latest_contributor_date = parsed_contributor_date
+
+    if metadata_modified:
+        parsed_metadata_modified = _parse_iso_candidate(metadata_modified)
+        if latest_contributor_date and parsed_metadata_modified and latest_contributor_date > parsed_metadata_modified:
+            return _normalize_iso_datetime(latest_contributor_date)
+
+        normalized_metadata = _normalize_iso_datetime(metadata_modified)
+        if normalized_metadata:
+            return normalized_metadata
+
+    if latest_contributor_date:
+        return _normalize_iso_datetime(latest_contributor_date)
+
+    fallback_modified = submission.updated_at if submission.updated_at else submission.created_at
+    return _normalize_iso_datetime(fallback_modified)
+
+
+def _get_document_metadata_last_modified_iso(submission) -> Optional[str]:
+    """Return last-modified timestamp exactly from document metadata fields."""
+    if not (hasattr(submission, 'analysis_result') and submission.analysis_result):
+        return None
+
+    metadata = submission.analysis_result.document_metadata or {}
+    metadata_modified = metadata.get('last_modified_date') or metadata.get('modified_date')
+    return _normalize_iso_datetime(metadata_modified)
+
+
 class SubmissionDTO:
     """Base DTO for Submission model serialization"""
     
@@ -15,14 +88,8 @@ class SubmissionDTO:
         if not submission:
             return None
         
-        created_at_iso = submission.created_at.isoformat()
-        if not created_at_iso.endswith('Z') and '+' not in created_at_iso:
-            created_at_iso += 'Z'
-        
-        last_modified = submission.updated_at if submission.updated_at else submission.created_at
-        last_modified_iso = last_modified.isoformat() if last_modified else None
-        if last_modified_iso and not last_modified_iso.endswith('Z') and '+' not in last_modified_iso:
-            last_modified_iso += 'Z'
+        created_at_iso = _normalize_iso_datetime(submission.created_at)
+        last_modified_iso = _resolve_last_modified_iso(submission)
         
         data = {
             'id': submission.id,
@@ -69,14 +136,9 @@ class SubmissionListDTO:
         if not submission:
             return None
         
-        created_at_iso = submission.created_at.isoformat()
-        if not created_at_iso.endswith('Z') and '+' not in created_at_iso:
-            created_at_iso += 'Z'
-
-        last_modified = submission.updated_at if submission.updated_at else submission.created_at
-        last_modified_iso = last_modified.isoformat() if last_modified else None
-        if last_modified_iso and not last_modified_iso.endswith('Z') and '+' not in last_modified_iso:
-            last_modified_iso += 'Z'
+        created_at_iso = _normalize_iso_datetime(submission.created_at)
+        metadata_last_modified_iso = _get_document_metadata_last_modified_iso(submission)
+        last_modified_iso = metadata_last_modified_iso or _resolve_last_modified_iso(submission)
         
         # Get word count from analysis result if available
         word_count = None
@@ -97,6 +159,7 @@ class SubmissionListDTO:
             'is_late': submission.is_late if hasattr(submission, 'is_late') else False,
             'created_at': created_at_iso,
             'last_modified': last_modified_iso,
+            'metadata_last_modified': metadata_last_modified_iso,
             'file_size': submission.file_size,
             'submission_type': submission.submission_type
         }
@@ -122,14 +185,8 @@ class SubmissionDetailDTO:
         if not submission:
             return None
         
-        created_at_iso = submission.created_at.isoformat()
-        if not created_at_iso.endswith('Z') and '+' not in created_at_iso:
-            created_at_iso += 'Z'
-        
-        last_modified = submission.updated_at if submission.updated_at else submission.created_at
-        last_modified_iso = last_modified.isoformat() if last_modified else None
-        if last_modified_iso and not last_modified_iso.endswith('Z') and '+' not in last_modified_iso:
-            last_modified_iso += 'Z'
+        created_at_iso = _normalize_iso_datetime(submission.created_at)
+        last_modified_iso = _resolve_last_modified_iso(submission)
         
         started_at_iso = submission.processing_started_at.isoformat() if submission.processing_started_at else None
         if started_at_iso and not started_at_iso.endswith('Z') and '+' not in started_at_iso:

@@ -36,6 +36,13 @@ const formatStudentId = (input) => {
   return result || input;
 };
 
+const normalizeContributorRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'author' || normalized === 'owner') return 'Author';
+  if (['editor', 'last editor', 'writer', 'contributor', 'commenter', 'reader'].includes(normalized)) return 'Editor';
+  return 'Editor';
+};
+
 const SubmissionDetailView = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -343,7 +350,7 @@ const SubmissionDetailView = () => {
                         <div className="contributor-details">
                           <div className="contributor-name">
                             <strong>{contributor.name}</strong>
-                            <span className="contributor-role">({contributor.role || 'Contributor'})</span>
+                            <span className="contributor-role">({normalizeContributorRole(contributor.role)})</span>
                           </div>
                           {(contributor.date || contributor.email) && (
                             <div className="contributor-date">
@@ -398,9 +405,11 @@ const SubmissionDetailView = () => {
                           <span className="font-semibold text-gray-800">
                             {contributor.name}
                           </span>
-                          <span className="text-xs text-gray-500">
-                            {contributor.email}
-                          </span>
+                          {contributor.email && (
+                            <span className="text-xs text-gray-500">
+                              {contributor.email}
+                            </span>
+                          )}
                         </div>
                         <div className="text-right">
                           <span className="text-sm font-bold text-maroon">
@@ -423,7 +432,7 @@ const SubmissionDetailView = () => {
                         <div style={{
                           height: '100%',
                           width: `${contributor.contributionPercent}%`,
-                          background: contributor.email === 'unverified' ? '#9ca3af' : 'var(--color-maroon)',
+                          background: contributor.name === 'Unverified Contributor' ? '#9ca3af' : 'var(--color-maroon)',
                           transition: 'width 1s ease-out'
                         }}></div>
                       </div>
@@ -433,7 +442,7 @@ const SubmissionDetailView = () => {
 
                 <div className="mt-6 p-3 bg-gray-50 rounded-lg border border-gray-100 italic text-xs text-gray-500">
                   <AlertCircle size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Revision stats are based on Google Drive history. Unverified contributors include anonymous or non-Gmail users.
+                  Revision stats are based on Google Drive history. Contributor identity depends on available Google revision metadata.
                 </div>
               </div>
             ) : (

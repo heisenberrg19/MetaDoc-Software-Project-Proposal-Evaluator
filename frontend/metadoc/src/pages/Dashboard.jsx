@@ -37,6 +37,16 @@ const formatStudentId = (input) => {
   return result || input;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return { date: '-', time: '-' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { date: '-', time: '-' };
+  return {
+    date: date.toLocaleDateString('en-US'),
+    time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+  };
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -199,14 +209,15 @@ const Dashboard = () => {
     {
       header: 'Date Submitted',
       key: 'date',
-      render: (submission) => (
-        <div className="date-cell">
-          <span>{new Date(submission.created_at).toLocaleDateString()}</span>
-          <span className="time-subtle">
-            {new Date(submission.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-      )
+      render: (submission) => {
+        const submitted = formatDateTime(submission.created_at);
+        return (
+          <div className="date-cell">
+            <span>{submitted.date}</span>
+            <span className="time-subtle">{submitted.time}</span>
+          </div>
+        );
+      }
     },
     {
       header: 'Status',

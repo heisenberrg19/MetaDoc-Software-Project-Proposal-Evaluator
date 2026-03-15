@@ -57,6 +57,15 @@ class MetadataService:
                 return candidate.split('@', 1)[0].strip().lower()
             return (identity or '').strip()
 
+        def normalize_contributor_role(role):
+            """Restrict displayed contributor roles to Author/Editor."""
+            normalized = str(role or '').strip().lower()
+            if normalized in ['owner', 'author']:
+                return 'Author'
+            if normalized in ['last editor', 'editor', 'writer', 'contributor', 'commenter', 'reader']:
+                return 'Editor'
+            return 'Editor'
+
         def add_contributor(name, role, email=None, date=None):
             if not name: return
             
@@ -68,6 +77,7 @@ class MetadataService:
             # 2. Advanced normalization (whitespace and case)
             norm_name = re.sub(r'\s+', ' ', name).strip().lower()
             norm_email = str(email).strip().lower() if email else None
+            role = normalize_contributor_role(role)
             
             # 3. Check for existing record to merge or skip
             for entry in metadata['contributors']:
@@ -85,8 +95,8 @@ class MetadataService:
                     if not entry.get('email') and email: entry['email'] = email
                     if not entry.get('date') and date: entry['date'] = date
                     
-                    # Prefer informative roles (Owner/Editor over Contributor/Author)
-                    high_priority_roles = ['Owner', 'Last Editor', 'Editor']
+                    # Prefer Author/Editor role labels.
+                    high_priority_roles = ['Author', 'Editor']
                     if role in high_priority_roles and entry.get('role') not in high_priority_roles:
                         entry['role'] = role
                     return
@@ -222,6 +232,10 @@ class MetadataService:
                         if latest_author and latest_author.lower() not in ('unavailable', 'none'):
                             metadata['last_editor'] = latest_author
 
+                        # Latest revision timestamp is the best signal for "Last Modified".
+                        if latest_date:
+                            metadata['last_modified_date'] = latest_date
+
                         # Use earliest revision author to fill author if still unknown
                         if metadata['author'] in ('Unavailable', '') and earliest_author:
                             if earliest_author.lower() not in ('unavailable', 'none'):
@@ -245,7 +259,9 @@ class MetadataService:
             # Sync basic dates if internal ones are missing
             if not metadata['creation_date']:
                 metadata['creation_date'] = external_metadata.get('createdTime')
-            if not metadata['last_modified_date']:
+
+            # Drive modifiedTime is authoritative for latest revision/edit time.
+            if external_metadata.get('modifiedTime'):
                 metadata['last_modified_date'] = external_metadata.get('modifiedTime')
                 
             # Prefer Drive IDs for Author/Editor if internal ones are default
@@ -308,8 +324,8 @@ class MetadataService:
         # If Author/Editor are still Unavailable, try to pick from contributors
         if metadata['contributors']:
             if metadata['author'] == 'Unavailable':
-                # Prefer Owner or Author
-                potential_author = next((c for c in metadata['contributors'] if c.get('role') in ['Owner', 'Author']), metadata['contributors'][0])
+                # Prefer Author role.
+                potential_author = next((c for c in metadata['contributors'] if c.get('role') in ['Author', 'Owner']), metadata['contributors'][0])
                 metadata['author'] = potential_author.get('name', 'Unavailable')
             
             if metadata['last_editor'] == 'Unavailable':

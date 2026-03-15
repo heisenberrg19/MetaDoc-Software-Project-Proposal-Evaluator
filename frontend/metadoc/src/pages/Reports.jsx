@@ -9,7 +9,8 @@ import {
     Trash2,
     CheckCircle,
     AlertTriangle,
-    TrendingUp
+    TrendingUp,
+    X
 } from 'lucide-react';
 import { dashboardAPI } from '../services/api';
 import '../styles/Reports.css';
@@ -59,6 +60,13 @@ const getDeliverableTitle = (submission, deadlineTitleMap) => {
     );
 };
 
+const normalizeContributorRole = (role) => {
+    const normalized = String(role || '').trim().toLowerCase();
+    if (normalized === 'author' || normalized === 'owner') return 'Author';
+    if (['editor', 'last editor', 'writer', 'contributor', 'commenter', 'reader'].includes(normalized)) return 'Editor';
+    return 'Editor';
+};
+
 const Reports = () => {
     const navigate = useNavigate();
     const [submissions, setSubmissions] = useState([]);
@@ -69,6 +77,9 @@ const Reports = () => {
     const [sortOption, setSortOption] = useState('none');
     const [teamCodeFilter, setTeamCodeFilter] = useState('none');
     const [deliverableFilter, setDeliverableFilter] = useState('none');
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [previewSubmission, setPreviewSubmission] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     const deadlineTitleMap = useMemo(() => {
         const map = new Map();
@@ -181,6 +192,28 @@ const Reports = () => {
         }
     };
 
+    const openPreview = async (event, submission) => {
+        event.stopPropagation();
+        setPreviewSubmission(submission);
+        setShowPreviewModal(true);
+        setPreviewLoading(true);
+
+        try {
+            const response = await dashboardAPI.getSubmissionDetail(submission.id);
+            setPreviewSubmission(response.data);
+        } catch (error) {
+            console.error('Failed to load preview details:', error);
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    const closePreview = () => {
+        setShowPreviewModal(false);
+        setPreviewSubmission(null);
+        setPreviewLoading(false);
+    };
+
     return (
         <div className="reports-page">
             <div className="reports-container">
@@ -274,7 +307,7 @@ const Reports = () => {
 
                             {!loading && visibleRows.map((submission) => {
                                 const submitted = formatDateTime(submission.created_at);
-                                const modified = formatDateTime(submission.last_modified || submission.updated_at || submission.created_at);
+                                const modified = formatDateTime(submission.metadata_last_modified || submission.last_modified || submission.updated_at || submission.created_at);
                                 const status = getStatusMeta(submission.status);
                                 const deliverableTitle = getDeliverableTitle(submission, deadlineTitleMap);
                                 const filename = submission.filename || submission.original_filename || 'Untitled';
@@ -287,7 +320,14 @@ const Reports = () => {
 
                                         <td>
                                             <div className="file-info-cell">
-                                                <span className="file-icon-mini"><FileText size={14} /></span>
+                                                <button
+                                                    type="button"
+                                                    className="file-icon-mini reports-preview-trigger"
+                                                    title="Preview file"
+                                                    onClick={(event) => openPreview(event, submission)}
+                                                >
+                                                    <FileText size={14} />
+                                                </button>
                                                 <span className="file-name" title={filename}>{filename}</span>
                                             </div>
                                         </td>
@@ -354,6 +394,123 @@ const Reports = () => {
                 {!loading && (
                     <div className="reports-footnote">
                         Showing {visibleRows.length} submitted file{visibleRows.length === 1 ? '' : 's'}.
+                    </div>
+                )}
+
+                {showPreviewModal && (
+                    <div className="modal-overlay" onClick={closePreview}>
+                        <div className="modal-content preview-modal reports-preview-modal" onClick={(event) => event.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>File Preview</h2>
+                                <button className="btn-close" onClick={closePreview}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <div className="modal-body">
+                                {previewLoading ? (
+                                    <div className="reports-preview-loading">Loading preview...</div>
+                                ) : previewSubmission ? (
+                                    <div className="preview-content-wrapper">
+                                        <h3 className="preview-title-large">{previewSubmission.original_filename || previewSubmission.file_name || 'Untitled file'}</h3>
+
+                                        <div className="preview-info-row">
+                                            <span className="preview-info-item"><strong>Student ID:</strong> {formatStudentId(previewSubmission.student_id || '')}</span>
+                                            <span className="preview-info-item"><strong>Submitted:</strong> {new Date(previewSubmission.created_at).toLocaleString()}</span>
+                                        </div>
+
+                                        <div className="preview-info-row">
+                                            <span className="preview-info-item"><strong>Word Count:</strong> {previewSubmission.analysis_result?.content_statistics?.word_count || 'N/A'}</span>
+                                        </div>
+
+                                        {!previewSubmission.analysis_result?.document_text ? (
+                                            <div className="preview-placeholder-large">
+                                                <FileText size={48} strokeWidth={1} />
+                                                <p>Document content not available</p>
+                                                <small>The document may still be processing or content extraction failed.</small>
+                                            </div>
+                                        ) : (
+                                            <div className="document-text-preview">
+                                                {previewSubmission.analysis_result.document_text}
+                                            </div>
+                                        )}
+
+                                        <hr className="preview-divider" />
+
+                                        <div className="preview-section">
+                                            <h4 className="preview-section-header">Document Metadata:</h4>
+                                            <div className="metadata-grid-compact">
+                                                <div className="meta-pair">
+                                                    <span className="meta-label">Author:</span>
+                                                    <span className="meta-val">{previewSubmission.analysis_result?.document_metadata?.author || 'Unknown'}</span>
+                                                </div>
+
+                                                <div className="meta-pair">
+                                                    <span className="meta-label">Creation Date:</span>
+                                                    <span className="meta-val">
+                                                        {(previewSubmission.analysis_result?.document_metadata?.creation_date || previewSubmission.analysis_result?.document_metadata?.created_date)
+                                                            ? new Date(previewSubmission.analysis_result.document_metadata.creation_date || previewSubmission.analysis_result.document_metadata.created_date).toLocaleString()
+                                                            : 'Unknown'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="meta-pair">
+                                                    <span className="meta-label">File Size:</span>
+                                                    <span className="meta-val">
+                                                        {previewSubmission.file_size ? `${(previewSubmission.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="meta-pair">
+                                                    <span className="meta-label">Last Editor:</span>
+                                                    <span className="meta-val">{previewSubmission.analysis_result?.document_metadata?.last_editor || 'Unknown'}</span>
+                                                </div>
+
+                                                <div className="meta-pair">
+                                                    <span className="meta-label">Last Modified Date:</span>
+                                                    <span className="meta-val">
+                                                        {(previewSubmission.analysis_result?.document_metadata?.last_modified_date || previewSubmission.analysis_result?.document_metadata?.modified_date)
+                                                            ? new Date(previewSubmission.analysis_result.document_metadata.last_modified_date || previewSubmission.analysis_result.document_metadata.modified_date).toLocaleString()
+                                                            : 'Unknown'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="preview-section">
+                                            <h4 className="preview-section-header">Contributors:</h4>
+                                            <div className="contributors-list-simple">
+                                                {previewSubmission.analysis_result?.document_metadata?.contributors ? (
+                                                    previewSubmission.analysis_result.document_metadata.contributors.map((contributor, index) => (
+                                                        <div key={index} className="contributor-row">
+                                                            <strong>{contributor.name}</strong> <span>({normalizeContributorRole(contributor.role)})</span>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="contributor-row">
+                                                        <strong>{previewSubmission.analysis_result?.document_metadata?.author || 'Unknown'}</strong> <span>(Author)</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="preview-error">Failed to load preview</div>
+                                )}
+                            </div>
+
+                            <div className="modal-footer-full">
+                                <button
+                                    className="btn btn-primary btn-block"
+                                    onClick={() => {
+                                        closePreview();
+                                        navigate(`/dashboard/submissions/${previewSubmission?.id}`, { state: { from: '/dashboard/reports', fromState: {} } });
+                                    }}
+                                >
+                                    View Full Details
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

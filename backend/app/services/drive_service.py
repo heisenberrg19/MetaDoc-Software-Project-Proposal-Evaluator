@@ -266,46 +266,44 @@ class DriveService:
             return None, f"Unexpected error: {str(e)}"
 
     def aggregate_contributions(self, revisions):
-        """Aggregate contributions with a focus on Gmail but showing all identifiable names"""
+        """Aggregate revisions and keep contributor identities as visible as Drive allows."""
         if not revisions:
             return []
-            
+
         total_revisions = len(revisions)
         stats = {}
-        
-        for rev in revisions:
-            user = rev.get('lastModifyingUser', {})
-            email = user.get('emailAddress', '').lower() if user else ''
-            name = user.get('displayName') if user else None
-            
-            # Fallback for hidden emails/names
-            if not name and not email:
-                name = "Unverified Contributor"
-                email = "unverified"
-            elif not name:
-                name = email.split('@')[0] if '@' in email else "Unknown"
 
-            # Use email as key if available, otherwise name
-            key = email if (email and email != 'unverified') else name
-            
+        for rev in revisions:
+            user = rev.get('lastModifyingUser', {}) or {}
+            email = str(user.get('emailAddress') or '').strip().lower()
+            name = str(user.get('displayName') or '').strip()
+
+            # Preserve visible contributor identity; when Drive hides identity,
+            # keep a neutral unverified label.
+            if not name and email:
+                name = email.split('@')[0] if '@' in email else email
+            if not name and not email:
+                name = 'Unverified Contributor'
+
+            key = email or name
+
             if key not in stats:
                 stats[key] = {
-                    'name': name, 
-                    'email': email, 
+                    'name': name,
+                    'email': email,
                     'count': 0,
-                    'is_gmail': email.endswith('@gmail.com')
+                    'is_gmail': email.endswith('@gmail.com') if email else False
                 }
             stats[key]['count'] += 1
-        
+
         report_contributors = []
-        for key, data in stats.items():
+        for _, data in stats.items():
             count = data['count']
             percent = (count / total_revisions) * 100
-            
-            # Mark the type for UI clarity
+
             display_name = data['name']
-            if not data['is_gmail'] and data['email'] != 'unverified':
-                display_name += " (External)"
+            if data['email'] and (not data['is_gmail']):
+                display_name += ' (External)'
 
             report_contributors.append({
                 'name': display_name,
@@ -314,8 +312,8 @@ class DriveService:
                 'contributionPercent': round(percent, 2),
                 'verified': data['is_gmail']
             })
-            
-        # Sort: Gmail users first, then by revision count
+
+        # Sort: Unverified to bottom, then verified Gmail users first, then by revision count.
         report_contributors.sort(key=lambda x: (x['verified'], x['revisionCount']), reverse=True)
         return report_contributors
 
