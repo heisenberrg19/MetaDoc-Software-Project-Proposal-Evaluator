@@ -495,8 +495,8 @@
 }
 
 .brand-logo-image {
-  width: 58px;
-  height: 58px;
+  width: 68px;
+  height: 68px;
   object-fit: contain;
   filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.25));
 }
@@ -759,8 +759,8 @@
   }
 
   .brand-logo-image {
-    width: 52px;
-    height: 52px;
+    width: 60px;
+    height: 60px;
   }
 }
 
@@ -811,8 +811,8 @@
   }
 
   .brand-logo-image {
-    width: 42px;
-    height: 42px;
+    width: 48px;
+    height: 48px;
   }
 
   .flow-arrow svg {
