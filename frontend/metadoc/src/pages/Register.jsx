@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FileText, Shield, BarChart3, User, Mail, Lock } from 'lucide-react';
+import { FileText, Shield, BarChart3, User, Mail, Lock, FolderOpen, ArrowRight, Search } from 'lucide-react';
 import Input from '../components/common/Input/Input';
 import Button from '../components/common/Button/Button';
+import citLogo from '../assets/images/cit_logo.png';
+import metaDocLogo from '../assets/images/logo.png';
 import '../styles/Register.css';
 
 const Register = () => {
@@ -70,10 +72,26 @@ const Register = () => {
                 {/* Left Side (Branding) - Shared */}
                 <div className="register-left">
                     <div className="brand-header">
-                        <div className="brand-icon">
-                            <FileText size={48} />
+                        <div className="brand-flow-visual" aria-hidden="true">
+                            <div className="flow-node flow-logo">
+                                <img src={metaDocLogo} alt="" className="brand-logo-image" />
+                            </div>
+                            <div className="flow-arrow">
+                                <ArrowRight size={30} />
+                            </div>
+                            <div className="flow-node flow-folder">
+                                <FolderOpen size={40} />
+                            </div>
+                            <div className="flow-arrow flow-arrow-secondary">
+                                <ArrowRight size={30} />
+                            </div>
+                            <div className="flow-node flow-file">
+                                <FileText size={36} className="flow-file-base" />
+                                <span className="flow-file-lens-wrap">
+                                    <Search size={14} className="flow-file-lens" />
+                                </span>
+                            </div>
                         </div>
-                        <h1 className="brand-title">MetaDoc</h1>
                         <p className="brand-subtitle">
                             Google Drive-Integrated Metadata Analyzer for Academic Document Evaluation
                         </p>
@@ -187,7 +205,10 @@ const Register = () => {
                         </form>
 
                         <div className="register-footer">
-                            <p>Cebu Institute of Technology - University</p>
+                            <div className="register-university-row">
+                                <img src={citLogo} alt="CIT University" width={22} height={22} className="register-university-logo" />
+                                <span>Cebu Institute of Technology - University</span>
+                            </div>
                             <p className="text-sm">© 2025 MetaDoc. All rights reserved.</p>
                         </div>
                     </div>

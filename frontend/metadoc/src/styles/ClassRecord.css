@@ -19,6 +19,15 @@
     gap: var(--spacing-lg);
 }
 
+.dashboard-layout.sidebar-hidden-reports .class-record-page {
+    max-width: 100%;
+    margin: 0;
+}
+
+.dashboard-layout.sidebar-hidden-reports .class-record-page .page-container {
+    max-width: 100%;
+}
+
 /* Header */
 .class-record-header {
     display: flex;
@@ -69,7 +78,7 @@
 .cr-search-form {
     display: flex;
     flex: 1;
-    max-width: 600px;
+    max-width: 460px;
 }
 
 .cr-search-wrapper {
@@ -93,7 +102,7 @@
     padding: 0.75rem 0.75rem 0.75rem 2.75rem;
     border: 2px solid var(--color-gray-300);
     border-radius: var(--radius-md);
-    font-size: 1rem;
+    font-size: 0.95rem;
     transition: all 0.2s;
     outline: none;
 }
@@ -292,6 +301,7 @@
     overflow-x: auto;
     position: relative;
     scrollbar-width: thin;
+    scrollbar-color: var(--color-maroon) rgba(128, 0, 32, 0.08);
 }
 
 /* Custom scrollbar for better aesthetics */
@@ -301,16 +311,17 @@
 }
 
 .table-container::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(128, 0, 32, 0.08);
+    border-radius: 10px;
 }
 
 .table-container::-webkit-scrollbar-thumb {
-    background: var(--color-gray-200);
+    background: linear-gradient(180deg, var(--color-maroon) 0%, var(--color-maroon-dark) 100%);
     border-radius: 10px;
 }
 
 .table-container::-webkit-scrollbar-thumb:hover {
-    background: var(--color-gray-300);
+    background: var(--color-maroon-dark);
 }
 
 .record-table {

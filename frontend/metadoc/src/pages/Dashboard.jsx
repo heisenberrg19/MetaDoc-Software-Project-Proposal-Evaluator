@@ -47,6 +47,21 @@ const formatDateTime = (value) => {
   };
 };
 
+const formatFilenameInitials = (value = '', maxChars = 20) => {
+  const raw = String(value || 'Untitled').trim();
+  if (raw.length <= maxChars) return raw;
+
+  const dotIndex = raw.lastIndexOf('.');
+  const extension = dotIndex > 0 ? raw.slice(dotIndex) : '';
+  const baseName = dotIndex > 0 ? raw.slice(0, dotIndex) : raw;
+  const chunks = baseName.split(/[\s._-]+/).filter(Boolean);
+
+  let initials = chunks.map((chunk) => chunk.charAt(0).toUpperCase()).join('');
+  if (!initials) initials = baseName.charAt(0).toUpperCase() || 'F';
+
+  return `${initials.slice(0, 10)}${extension}`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -186,7 +201,7 @@ const Dashboard = () => {
             <FileText size={18} />
           </div>
           <span className="file-name" title={submission.file_name || submission.original_filename}>
-            {submission.file_name || submission.original_filename || 'Untitled file'}
+            {formatFilenameInitials(submission.file_name || submission.original_filename || 'Untitled file', 20)}
           </span>
         </div>
       )

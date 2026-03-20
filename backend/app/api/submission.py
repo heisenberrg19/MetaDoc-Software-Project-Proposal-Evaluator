@@ -41,6 +41,23 @@ submission_bp = Blueprint('submission', __name__)
 submission_service = SubmissionService()
 drive_service = DriveService()
 
+
+def normalize_semester(raw_semester):
+    """Normalize semester input to canonical values expected by the system."""
+    if raw_semester is None:
+        return None
+
+    value = str(raw_semester).strip().upper()
+    if not value:
+        return None
+
+    if value in {'1', '1ST', 'FIRST'}:
+        return '1ST'
+    if value in {'2', '2ND', 'SECOND'}:
+        return '2ND'
+
+    return None
+
 def validate_submission_token(token, increment=False):
     """Validate submission token and return token with deadline info"""
     from app.models import SubmissionToken, Deadline
@@ -336,6 +353,10 @@ def upload_file():
         
         student_id = request.form.get('student_id', '').strip()
         student_name = request.form.get('student_name', '').strip()
+        semester = normalize_semester(request.form.get('semester'))
+
+        if not semester:
+            return jsonify({'error': 'Semester is required. Please select 1ST or 2ND semester.'}), 400
 
         if user.role == UserRole.STUDENT:
             student = Student.query.filter(
@@ -460,6 +481,7 @@ def upload_file():
             submission_type='upload',
             student_id=student_id if student_id else None,
             student_name=student_name if student_name else None,
+            semester=semester,
             deadline_id=deadline_id if deadline_id else None,
             professor_id=professor_id,
             status=SubmissionStatus.PENDING
@@ -626,6 +648,10 @@ def submit_drive_link():
         drive_link = data['drive_link'].strip()
         student_id = data.get('student_id', '').strip()
         student_name = data.get('student_name', '').strip()
+        semester = normalize_semester(data.get('semester'))
+
+        if not semester:
+            return jsonify({'error': 'Semester is required. Please select 1ST or 2ND semester.'}), 400
 
         if user.role == UserRole.STUDENT:
             student = Student.query.filter(
@@ -770,6 +796,7 @@ def submit_drive_link():
             google_drive_link=drive_link,
             student_id=student_id if student_id else None,
             student_name=student_name if student_name else None,
+            semester=semester,
             deadline_id=deadline_id if deadline_id else None,
             professor_id=professor_id,
             status=SubmissionStatus.PENDING

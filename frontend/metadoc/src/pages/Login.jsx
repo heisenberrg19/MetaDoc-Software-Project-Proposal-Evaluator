@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, Shield, BarChart3, Mail, Lock } from 'lucide-react';
+import { FileText, Shield, BarChart3, Mail, Lock, FolderOpen, ArrowRight, Search } from 'lucide-react';
 import Input from '../components/common/Input/Input';
 import Button from '../components/common/Button/Button';
 import citLogo from '../assets/images/cit_logo.png';
+import metaDocLogo from '../assets/images/logo.png';
 import '../styles/Login.css';
 
 const Login = () => {
@@ -92,10 +93,26 @@ const Login = () => {
       <div className="login-container">
         <div className="login-left">
           <div className="brand-header">
-            <div className="brand-icon">
-              <FileText size={48} />
+            <div className="brand-flow-visual" aria-hidden="true">
+              <div className="flow-node flow-logo">
+                <img src={metaDocLogo} alt="" className="brand-logo-image" />
+              </div>
+              <div className="flow-arrow">
+                <ArrowRight size={30} />
+              </div>
+              <div className="flow-node flow-folder">
+                <FolderOpen size={40} />
+              </div>
+              <div className="flow-arrow flow-arrow-secondary">
+                <ArrowRight size={30} />
+              </div>
+              <div className="flow-node flow-file">
+                <FileText size={36} className="flow-file-base" />
+                <span className="flow-file-lens-wrap">
+                  <Search size={14} className="flow-file-lens" />
+                </span>
+              </div>
             </div>
-            <h1 className="brand-title">MetaDoc</h1>
             <p className="brand-subtitle">
               Google Drive-Integrated Metadata Analyzer for Academic Document Evaluation
             </p>
@@ -137,7 +154,7 @@ const Login = () => {
         <div className="login-right">
           <div className="login-card">
             <div className="login-header">
-              <h2>Welcome Back</h2>
+              <h2>MetaDoc</h2>
               <p>Sign in to your account</p>
             </div>
 
@@ -195,7 +212,7 @@ const Login = () => {
               className="w-full mb-3"
               style={{ marginBottom: '0.75rem' }}
               icon={() => (
-                <svg width="20" height="20" viewBox="0 0 24 24" style={{ marginRight: '0.5rem' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" className="google-icon">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
@@ -216,8 +233,8 @@ const Login = () => {
             </div>
 
             <div className="login-footer">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-                <img src={citLogo} alt="CIT University" width={22} height={22} style={{ objectFit: 'contain', display: 'block', flexShrink: 0 }} />
+              <div className="login-university-row">
+                <img src={citLogo} alt="CIT University" width={22} height={22} className="login-university-logo" />
                 <span>Cebu Institute of Technology - University</span>
               </div>
               <p className="text-sm">© 2025 MetaDoc. All rights reserved.</p>

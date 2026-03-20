@@ -29,6 +29,7 @@ const TokenBasedSubmission = () => {
   // Drive link form state
   const [driveData, setDriveData] = useState({
     drive_link: '',
+    semester: '',
   });
 
   const [linkValidation, setLinkValidation] = useState(null);
@@ -137,6 +138,11 @@ const TokenBasedSubmission = () => {
 
   const handleDriveLinkSubmit = async (e) => {
     e.preventDefault();
+    if (!driveData.semester) {
+      setError('Please select a semester (1ST or 2ND)');
+      return;
+    }
+
     if (!driveData.drive_link) {
       setError('Please enter a Google Drive link');
       return;
@@ -163,7 +169,7 @@ const TokenBasedSubmission = () => {
       });
 
       // Reset form
-      setDriveData({ drive_link: '' });
+      setDriveData({ drive_link: '', semester: '' });
       setLinkValidation(null);
 
       // Clear success message after 5 seconds
@@ -410,6 +416,22 @@ const TokenBasedSubmission = () => {
                   <p style={{ fontSize: '0.875rem', color: 'var(--color-gray-600)', margin: 0 }}>Course & Year: {studentInfo?.course_year || 'N/A'}</p>
                   <p style={{ fontSize: '0.875rem', color: 'var(--color-gray-600)', margin: 0 }}>Team Code: {studentInfo?.team_code || 'N/A'}</p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--color-gray-500)', margin: 0 }}>{studentInfo?.email || user?.email || ''}</p>
+
+                  <div className="submission-semester-wrap">
+                    <label htmlFor="submission-semester" className="submission-semester-label">Semester</label>
+                    <select
+                      id="submission-semester"
+                      name="semester"
+                      value={driveData.semester}
+                      onChange={(e) => setDriveData({ ...driveData, semester: e.target.value })}
+                      className="submission-semester-select"
+                      required
+                    >
+                      <option value="">Select</option>
+                      <option value="1ST">1ST</option>
+                      <option value="2ND">2ND</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -550,7 +572,7 @@ const TokenBasedSubmission = () => {
               type="submit"
               size="large"
               loading={loading}
-              disabled={!driveData.drive_link}
+              disabled={!driveData.drive_link || !driveData.semester}
               icon={LinkIcon}
               className="w-full"
               style={{ marginTop: 'var(--spacing-md)' }}

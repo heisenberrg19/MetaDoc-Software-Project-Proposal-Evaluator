@@ -240,3 +240,364 @@
         font-size: 1.5rem;
     }
 }
+
+/* Refined Register UI (aligned with Login) */
+.register-page {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    padding: 1.5rem;
+    background:
+        radial-gradient(1200px 520px at -10% -25%, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 60%),
+        radial-gradient(800px 420px at 110% 110%, rgba(240, 206, 120, 0.1) 0%, rgba(240, 206, 120, 0) 60%),
+        linear-gradient(145deg, #520014 0%, #6f001f 50%, #830028 100%);
+}
+
+.register-container {
+    position: relative;
+    width: min(1120px, 100%);
+    min-height: min(720px, calc(100vh - 3rem));
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 25px 55px rgba(17, 24, 39, 0.35);
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(4px);
+}
+
+.register-left {
+    padding: clamp(2rem, 4vw, 3rem);
+    background: linear-gradient(165deg, rgba(82, 0, 20, 0.96) 0%, rgba(114, 0, 32, 0.96) 100%);
+}
+
+.brand-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.brand-flow-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    margin: 0 auto 1.35rem;
+    width: 100%;
+}
+
+.flow-node {
+    width: 82px;
+    height: 82px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-gold);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+}
+
+.flow-logo {
+    width: 108px;
+    height: 108px;
+    border-radius: 26px;
+    background: rgba(238, 198, 95, 0.2);
+    animation: registerLogoFloat 3.8s ease-in-out infinite;
+}
+
+.brand-logo-image {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+    filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.25));
+}
+
+.flow-arrow {
+    color: rgba(244, 214, 145, 0.9);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    animation: registerArrowPulse 2.8s ease-in-out infinite;
+}
+
+.flow-arrow-secondary {
+    animation-delay: 0.22s;
+}
+
+.flow-file {
+    position: relative;
+}
+
+.flow-file-base {
+    opacity: 0.95;
+}
+
+.flow-file-lens-wrap {
+    position: absolute;
+    right: 14px;
+    bottom: 14px;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(82, 0, 20, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.flow-file-lens {
+    color: #fff4cc;
+}
+
+.brand-title {
+    margin: 0;
+    font-size: clamp(2.2rem, 5vw, 3.1rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+}
+
+.brand-subtitle {
+    margin-top: 0.85rem;
+    max-width: 40ch;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.86);
+    line-height: 1.55;
+}
+
+.features-list {
+    gap: 1rem;
+}
+
+.feature-item {
+    padding: 0.55rem 0.2rem;
+}
+
+.feature-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgba(238, 198, 95, 0.18);
+}
+
+.feature-content h3 {
+    font-size: 1.12rem;
+    margin: 0 0 0.2rem;
+}
+
+.feature-content p {
+    font-size: 0.89rem;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.register-right {
+    padding: clamp(1.4rem, 3.4vw, 2.3rem);
+    background: #f5f7fb;
+}
+
+.register-card {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 1.6rem;
+    border-radius: 14px;
+    border: 1px solid #e3e7ee;
+    background: #ffffff;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+}
+
+.register-header {
+    margin-bottom: 1.15rem;
+}
+
+.register-header h2 {
+    margin: 0;
+    color: #4f1223;
+    font-size: 2.05rem;
+    letter-spacing: -0.02em;
+}
+
+.register-header p {
+    margin-top: 0.35rem;
+    color: #6b7280;
+}
+
+.register-card .form-group {
+    margin-bottom: 0.95rem;
+}
+
+.register-card .form-input {
+    background: #f4f7fc;
+    border-color: #d4dbe8;
+}
+
+.register-card .form-input:focus {
+    background: #fff;
+}
+
+.register-card .btn.w-full {
+    min-height: 46px;
+    border-radius: 9px;
+}
+
+.auth-switch {
+    margin-top: 0.8rem;
+}
+
+.register-footer {
+    margin-top: 0.8rem;
+    padding-top: 0.85rem;
+}
+
+.register-university-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    color: #6b7280;
+    font-size: 0.86rem;
+    margin-bottom: 0.25rem;
+}
+
+.register-university-logo {
+    object-fit: contain;
+    display: block;
+    flex-shrink: 0;
+}
+
+@keyframes registerLogoFloat {
+    0% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-2px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+@keyframes registerArrowPulse {
+    0% {
+        opacity: 0.52;
+        transform: translateX(0);
+    }
+
+    50% {
+        opacity: 0.9;
+        transform: translateX(1px);
+    }
+
+    100% {
+        opacity: 0.52;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flow-logo,
+    .flow-arrow {
+        animation: none;
+    }
+}
+
+@media (max-width: 980px) {
+    .register-container {
+        grid-template-columns: 1fr;
+    }
+
+    .register-left {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .brand-subtitle {
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .flow-logo {
+        width: 96px;
+        height: 96px;
+    }
+
+    .flow-node {
+        width: 70px;
+        height: 70px;
+    }
+
+    .brand-logo-image {
+        width: 52px;
+        height: 52px;
+    }
+
+    .flow-file-lens-wrap {
+        right: 10px;
+        bottom: 10px;
+        width: 18px;
+        height: 18px;
+    }
+}
+
+@media (max-width: 560px) {
+    .register-page {
+        padding: 0.8rem;
+    }
+
+    .register-card {
+        padding: 1.15rem;
+    }
+
+    .register-header h2 {
+        font-size: 1.75rem;
+    }
+
+    .brand-flow-visual {
+        gap: 0.4rem;
+        margin-bottom: 1rem;
+    }
+
+    .flow-logo {
+        width: 76px;
+        height: 76px;
+        border-radius: 18px;
+    }
+
+    .flow-node {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+    }
+
+    .brand-logo-image {
+        width: 42px;
+        height: 42px;
+    }
+
+    .flow-arrow svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .flow-file-lens-wrap {
+        right: 6px;
+        bottom: 6px;
+        width: 14px;
+        height: 14px;
+    }
+
+    .flow-file-lens {
+        width: 10px;
+        height: 10px;
+    }
+
+    .feature-content h3 {
+        font-size: 1rem;
+    }
+}

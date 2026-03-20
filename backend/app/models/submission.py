@@ -26,6 +26,7 @@ class Submission(BaseModel):
     google_drive_link = db.Column(db.String(500), nullable=True)
     student_id = db.Column(db.String(50), nullable=True)
     student_name = db.Column(db.String(255), nullable=True)
+    semester = db.Column(db.String(10), nullable=True)
     
     # Processing status
     status = db.Column(db.Enum(SubmissionStatus), default=SubmissionStatus.PENDING, nullable=False)
@@ -113,6 +114,7 @@ class Submission(BaseModel):
             'submission_type': self.submission_type,
             'student_id': self.student_id,
             'student_name': self.student_name,
+            'semester': self.semester,
             'status': self.status.value,
             'is_late': self.is_late,
             'last_modified': last_modified_iso,

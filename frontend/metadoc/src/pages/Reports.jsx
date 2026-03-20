@@ -39,6 +39,15 @@ const resolveSchoolYear = () => {
     return `${currentYear}-${currentYear + 1}`;
 };
 
+const resolveSemester = (value) => {
+    const date = value ? new Date(value) : new Date();
+    const normalizedDate = Number.isNaN(date.getTime()) ? new Date() : date;
+    const month = normalizedDate.getMonth();
+
+    // 1ST semester: August to December, 2ND semester: January to July.
+    return month >= 7 ? '1ST' : '2ND';
+};
+
 const getStatusMeta = (status = '') => {
     const normalized = String(status || '').toLowerCase();
     if (normalized === 'late') {
@@ -67,6 +76,34 @@ const normalizeContributorRole = (role) => {
     return 'Editor';
 };
 
+const isLongFilename = (value = '') => String(value).length > 20;
+
+const formatFilenameInitials = (value = '', maxChars = 20) => {
+    const raw = String(value || 'Untitled').trim();
+    if (raw.length <= maxChars) return raw;
+
+    const dotIndex = raw.lastIndexOf('.');
+    const extension = dotIndex > 0 ? raw.slice(dotIndex) : '';
+    const baseName = dotIndex > 0 ? raw.slice(0, dotIndex) : raw;
+    const chunks = baseName.split(/[\s._-]+/).filter(Boolean);
+
+    let initials = chunks.map((chunk) => chunk.charAt(0).toUpperCase()).join('');
+    if (!initials) initials = baseName.charAt(0).toUpperCase() || 'F';
+
+    const compactInitials = initials.slice(0, 10);
+    return `${compactInitials}${extension}`;
+};
+
+const formatDeliverableInitials = (value = '', maxChars = 10) => {
+    const raw = String(value || 'Untitled Deliverable').trim();
+    const chunks = raw.split(/[\s._-]+/).filter(Boolean);
+
+    let initials = chunks.map((chunk) => chunk.charAt(0).toUpperCase()).join('');
+    if (!initials) initials = raw.charAt(0).toUpperCase() || 'D';
+
+    return initials.slice(0, maxChars);
+};
+
 const Reports = () => {
     const navigate = useNavigate();
     const [submissions, setSubmissions] = useState([]);
@@ -80,6 +117,8 @@ const Reports = () => {
     const [showPreviewModal, setShowPreviewModal] = useState(false);
     const [previewSubmission, setPreviewSubmission] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    const [showFilenameModal, setShowFilenameModal] = useState(false);
+    const [selectedFilename, setSelectedFilename] = useState('');
 
     const deadlineTitleMap = useMemo(() => {
         const map = new Map();
@@ -214,6 +253,17 @@ const Reports = () => {
         setPreviewLoading(false);
     };
 
+    const openFilenameModal = (event, filename) => {
+        event.stopPropagation();
+        setSelectedFilename(filename || 'Untitled');
+        setShowFilenameModal(true);
+    };
+
+    const closeFilenameModal = () => {
+        setShowFilenameModal(false);
+        setSelectedFilename('');
+    };
+
     return (
         <div className="reports-page">
             <div className="reports-container">
@@ -287,6 +337,7 @@ const Reports = () => {
                                 <th>Course &amp; Year</th>
                                 <th>Team Code</th>
                                 <th>SY</th>
+                                <th>Semester</th>
                                 <th>Status</th>
                                 <th className="text-right">Actions</th>
                             </tr>
@@ -295,13 +346,13 @@ const Reports = () => {
                         <tbody>
                             {loading && (
                                 <tr>
-                                    <td colSpan="11" className="empty-table-state">Loading submitted files...</td>
+                                    <td colSpan="12" className="empty-table-state">Loading submitted files...</td>
                                 </tr>
                             )}
 
                             {!loading && visibleRows.length === 0 && (
                                 <tr>
-                                    <td colSpan="11" className="empty-table-state">No submitted files found.</td>
+                                    <td colSpan="12" className="empty-table-state">No submitted files found.</td>
                                 </tr>
                             )}
 
@@ -310,12 +361,14 @@ const Reports = () => {
                                 const modified = formatDateTime(submission.metadata_last_modified || submission.last_modified || submission.updated_at || submission.created_at);
                                 const status = getStatusMeta(submission.status);
                                 const deliverableTitle = getDeliverableTitle(submission, deadlineTitleMap);
+                                const displayDeliverableTitle = formatDeliverableInitials(deliverableTitle, 10);
                                 const filename = submission.filename || submission.original_filename || 'Untitled';
+                                const displayFilename = formatFilenameInitials(filename, 20);
 
                                 return (
                                     <tr key={submission.id}>
                                         <td>
-                                            <span className="file-name" title={deliverableTitle}>{deliverableTitle}</span>
+                                            <span className="file-name" title={deliverableTitle}>{displayDeliverableTitle}</span>
                                         </td>
 
                                         <td>
@@ -328,7 +381,18 @@ const Reports = () => {
                                                 >
                                                     <FileText size={14} />
                                                 </button>
-                                                <span className="file-name" title={filename}>{filename}</span>
+                                                <div className="reports-file-cell">
+                                                    <span className="file-name" title={filename}>{displayFilename}</span>
+                                                    {isLongFilename(filename) && (
+                                                        <button
+                                                            type="button"
+                                                            className="reports-see-more"
+                                                            onClick={(event) => openFilenameModal(event, filename)}
+                                                        >
+                                                            See more
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
 
@@ -358,6 +422,7 @@ const Reports = () => {
                                         <td>{submission.course_year || 'N/A'}</td>
                                         <td>{submission.team_code || 'N/A'}</td>
                                         <td>{resolveSchoolYear()}</td>
+                                        <td>{submission.semester || resolveSemester(submission.created_at)}</td>
 
                                         <td>
                                             <span className={`status-pill ${status.className}`}>
@@ -509,6 +574,23 @@ const Reports = () => {
                                 >
                                     View Full Details
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showFilenameModal && (
+                    <div className="modal-overlay" onClick={closeFilenameModal}>
+                        <div className="modal-content reports-filename-modal" onClick={(event) => event.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>File Name</h2>
+                                <button className="btn-close" onClick={closeFilenameModal}>
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <div className="modal-body">
+                                <div className="reports-filename-rect">{selectedFilename}</div>
                             </div>
                         </div>
                     </div>

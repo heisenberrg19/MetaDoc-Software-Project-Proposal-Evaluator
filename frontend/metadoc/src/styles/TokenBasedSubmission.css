@@ -419,6 +419,45 @@
   transform: scale(0.99);
 }
 
+.submission-semester-wrap {
+  margin-top: 0.45rem;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-width: 160px;
+}
+
+.submission-semester-label {
+  font-size: 0.68rem;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.submission-semester-select {
+  width: 100%;
+  min-width: 128px;
+  max-width: 160px;
+  padding: 0.34rem 1.6rem 0.34rem 0.52rem;
+  border: 1px solid rgba(128, 0, 32, 0.22);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-maroon-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.submission-semester-select:focus {
+  outline: none;
+  border-color: var(--color-maroon);
+  box-shadow: 0 0 0 3px rgba(128, 0, 32, 0.12);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -438,5 +477,14 @@
 
   .gate-brand-name {
     font-size: 2rem;
+  }
+
+  .submission-semester-wrap {
+    max-width: 140px;
+  }
+
+  .submission-semester-select {
+    min-width: 120px;
+    max-width: 140px;
   }
 }

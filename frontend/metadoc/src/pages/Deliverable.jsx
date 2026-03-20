@@ -41,6 +41,36 @@ const formatStudentId = (input) => {
   return result || input;
 };
 
+const resolveSchoolYear = () => {
+  const currentYear = new Date().getFullYear();
+  return `${currentYear}-${currentYear + 1}`;
+};
+
+const resolveSemester = (value) => {
+  const date = value ? new Date(value) : new Date();
+  const normalizedDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const month = normalizedDate.getMonth();
+
+  return month >= 7 ? '1ST' : '2ND';
+};
+
+const formatFilenameInitials = (value = '', maxChars = 20) => {
+  const raw = String(value || 'Untitled').trim();
+  if (raw.length <= maxChars) return raw;
+
+  const dotIndex = raw.lastIndexOf('.');
+  const extension = dotIndex > 0 ? raw.slice(dotIndex) : '';
+  const baseName = dotIndex > 0 ? raw.slice(0, dotIndex) : raw;
+  const chunks = baseName.split(/[\s._-]+/).filter(Boolean);
+
+  let initials = chunks.map((chunk) => chunk.charAt(0).toUpperCase()).join('');
+  if (!initials) initials = baseName.charAt(0).toUpperCase() || 'F';
+
+  return `${initials.slice(0, 10)}${extension}`;
+};
+
+const isLongFilename = (value = '') => String(value).length > 20;
+
 const normalizeContributorRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
   if (normalized === 'author' || normalized === 'owner') return 'Author';
@@ -83,6 +113,8 @@ const Deliverable = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewSubmission, setPreviewSubmission] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showFilenameModal, setShowFilenameModal] = useState(false);
+  const [selectedFilename, setSelectedFilename] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteType, setDeleteType] = useState('submission'); // 'submission' | 'folder'
@@ -381,6 +413,12 @@ const Deliverable = () => {
     } finally {
       setPreviewLoading(false);
     }
+  };
+
+  const openFilenameModal = (e, filename) => {
+    e.stopPropagation();
+    setSelectedFilename(filename || 'Untitled');
+    setShowFilenameModal(true);
   };
 
   // --- HELPERS ---
@@ -714,6 +752,8 @@ const Deliverable = () => {
                   <th>Last Modified</th>
                   <th>Course & Year</th>
                   <th>Team Code</th>
+                  <th>SY</th>
+                  <th>Semester</th>
                   <th>Status</th>
                   <th className="text-right">Actions</th>
                 </tr>
@@ -721,6 +761,7 @@ const Deliverable = () => {
               <tbody>
                 {submissions.map(submission => {
                   const timeliness = getTimeliness(submission.created_at, selectedDeadline.deadline_datetime);
+                  const displayFilename = formatFilenameInitials(submission.original_filename || 'Untitled', 20);
 
                   return (
                     <tr
@@ -742,8 +783,17 @@ const Deliverable = () => {
                             <FileText size={18} />
                           </div>
                           <span className="file-name" title={submission.original_filename}>
-                            {submission.original_filename}
+                            {displayFilename}
                           </span>
+                          {isLongFilename(submission.original_filename || '') && (
+                            <button
+                              type="button"
+                              className="deliverable-see-more"
+                              onClick={(e) => openFilenameModal(e, submission.original_filename)}
+                            >
+                              See more
+                            </button>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -777,6 +827,8 @@ const Deliverable = () => {
                       </td>
                       <td>{submission.course_year || '-'}</td>
                       <td>{submission.team_code || '-'}</td>
+                      <td>{resolveSchoolYear()}</td>
+                      <td>{submission.semester || resolveSemester(submission.created_at)}</td>
                       <td>
                         {timeliness && (
                           <div className={`status-pill ${timeliness.isLate ? 'status-late' : 'status-ontime'}`}>
@@ -970,6 +1022,24 @@ const Deliverable = () => {
               }}>
                 View Full Details
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {showFilenameModal && (
+        <div className="modal-overlay" onClick={() => setShowFilenameModal(false)}>
+          <div className="modal-content deliverable-filename-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>File Name</h2>
+              <button className="btn-close" onClick={() => setShowFilenameModal(false)}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="deliverable-filename-rect">{selectedFilename}</div>
             </div>
           </div>
         </div>

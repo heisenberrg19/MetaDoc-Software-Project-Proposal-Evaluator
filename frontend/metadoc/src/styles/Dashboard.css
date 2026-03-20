@@ -197,6 +197,11 @@
   word-break: break-all;
 }
 
+.dashboard-layout.sidebar-hidden-reports .dashboard-page {
+  max-width: 100%;
+  margin: 0;
+}
+
 /* Old Submission Link Banner (keep for reference) */
 .submission-link-banner {
   background: linear-gradient(135deg, var(--color-maroon) 0%, #6b1a1a 100%);
