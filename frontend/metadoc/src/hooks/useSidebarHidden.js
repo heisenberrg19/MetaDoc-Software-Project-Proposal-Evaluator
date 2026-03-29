@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 
 /**
  * Custom hook for managing sidebar hidden state across all pages
- * Supports: Overview, Deliverables, Class Record, and Reports
+ * Supports: Overview, Deliverables, Submissions, Class Record, and Reports
  * 
  * @returns {Object} { sidebarHidden, setSidebarHidden, isSpecialPage, toggleSidebar }
  */
@@ -17,6 +17,7 @@ export const useSidebarHidden = () => {
   const isSpecialPage = location.pathname.includes('/reports') || 
                         location.pathname.includes('/dashboard/class-record') || 
                         location.pathname.includes('/dashboard/deliverables') ||
+                        location.pathname.includes('/dashboard/submissions') ||
                         location.pathname === '/dashboard';
 
   useEffect(() => {

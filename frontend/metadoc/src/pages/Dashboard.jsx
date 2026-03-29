@@ -62,6 +62,22 @@ const formatFilenameInitials = (value = '', maxChars = 20) => {
   return `${initials.slice(0, 10)}${extension}`;
 };
 
+const resolveSubmissionTimeliness = (submission) => {
+  const submittedAt = submission?.created_at ? new Date(submission.created_at) : null;
+  const deadlineAt = submission?.deadline_datetime ? new Date(submission.deadline_datetime) : null;
+
+  if (
+    submittedAt &&
+    deadlineAt &&
+    !Number.isNaN(submittedAt.getTime()) &&
+    !Number.isNaN(deadlineAt.getTime())
+  ) {
+    return submittedAt <= deadlineAt ? 'On Time' : 'Late';
+  }
+
+  return submission?.status || 'Unknown';
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -237,11 +253,14 @@ const Dashboard = () => {
     {
       header: 'Status',
       key: 'status',
-      render: (submission) => (
-        <Badge variant={getStatusColor(submission.status)}>
-          {submission.status}
+      render: (submission) => {
+        const statusLabel = resolveSubmissionTimeliness(submission);
+        return (
+        <Badge variant={getStatusColor(statusLabel)}>
+          {statusLabel}
         </Badge>
-      )
+      );
+      }
     }
   ];
 
@@ -491,13 +510,15 @@ const Dashboard = () => {
 
 const getStatusColor = (status) => {
   const colors = {
+    'on time': 'success',
+    late: 'error',
     pending: 'warning',
     processing: 'info',
     completed: 'success',
     failed: 'error',
     warning: 'warning',
   };
-  return colors[status] || 'info';
+  return colors[String(status || '').toLowerCase()] || 'info';
 };
 
 const getTimeRemaining = (deadlineDate) => {

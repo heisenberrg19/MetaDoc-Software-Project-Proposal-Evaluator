@@ -1,59 +1,106 @@
 # MetaDoc: Software Project Proposal Evaluator
 
-MetaDoc is a comprehensive document analysis system designed for academic institutions to streamline document submission, metadata extraction, and automated evaluation of student proposals and papers.
+> **⚡ Quick Start?** See [QUICK_START.md](QUICK_START.md) for a 10-minute setup guide!
+
+MetaDoc is a comprehensive **document analysis and evaluation platform** designed for academic institutions. It streamlines student proposal submissions, performs intelligent metadata extraction, executes deep NLP analysis, and leverages Google Gemini AI for qualitative insights.
+
+---
+
+## ✨ Key Features
+
+### 📤 **Unified Submission System**
+- Google OAuth 2.0 authentication for students and professors
+- Whitelist gatekeeping integrated with Class Records
+- Google Drive link submission with permission handling
+- Flexible deadline management (hard/soft deadlines)
+- Multi-folder organization by deadline
+
+### 🔬 **Intelligent Document Analysis**
+- Automatic metadata extraction (authors, dates, revision counts)
+- Identity deduplication with smart name/email normalization
+- Real-time NLP analysis (readability, sentiment, named entities)
+- Google Gemini AI-powered qualitative evaluation
+- Custom rubric-based assessment
+
+### 👨‍🏫 **Professor Dashboard**
+- Real-time system overview and statistics
+- Submission management and organization
+- Comprehensive report generation (PDF/CSV)
+- Rubric creation and customization
+- Batch operations for submissions
+
+---
 
 ## 🏗️ System Architecture
 
-The system consists of:
-- **Backend API**: Flask-based REST API with tiered service layer.
-- **Frontend**: React application (Vite) with modern UI and automated dashboard.
-- **Database**: SQLite (development) / PostgreSQL (production) with SQLAlchemy ORM.
-- **Analysis Engine**: Multi-tiered metadata extraction, spacy/textstat NLP, and Gemini AI qualitative analysis.
-- **Identity Deduplication**: Robust name/email normalization logic to ensure unique contributor profiles.
-- **Authentication**: Unified secure authentication via Google OAuth 2.0.
+### Backend (3-Layer Design)
+```
+API Layer (Flask Routes) 
+    ↓
+Service Layer (Business Logic) 
+    ↓
+Persistence Layer (SQLAlchemy ORM)
+```
+
+**Key Components:**
+- **Flask REST API** - 8+ blueprints for different features
+- **Service Layer** - 12 specialized service classes
+- **SQLAlchemy ORM** - Database abstraction for SQLite/PostgreSQL
+- **Google APIs** - Drive, OAuth, and Gemini integration
+
+### Frontend (React + Vite)
+```
+Pages & Components (React)
+    ↓
+State Management (AuthContext)
+    ↓
+API Services (Axios)
+```
+
+**Key Features:**
+- Component-based architecture with reusable UI
+- React Context for state management
+- Responsive design (works on desktop & mobile)
+- Real-time loading states and error handling
+- Role-based access control
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Python 3.10+** (Tested on Python 3.13)
+- **Python 3.10+** (Tested on 3.13)
 - **Node.js 18+** and npm
-- **SQLite** (included with Python)
-- **Git** (for version control)
-- **Windows/Linux/macOS** (cross-platform compatible)
+- **Git** for version control
+- **Google Cloud Account** (for OAuth and Gemini API)
 
-### Installation
+### Installation (3 Steps)
 
-1. **Clone the repository**:
+**1. Clone Repository**
 ```bash
 git clone <repository-url>
 cd MetaDoc-Software-Project-Proposal-Evaluator
 ```
 
-2. **Setup Backend**:
+**2. Setup Backend**
 ```bash
 cd backend
-
-# Create and activate virtual environment
 python -m venv venv
 
-# Windows PowerShell
+# Activate virtual environment
+# Windows PowerShell:
 .\venv\Scripts\Activate.ps1
 
-# Linux/Mac
+# Linux/Mac:
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Or install manually if requirements.txt is missing:
-# pip install Flask==3.0.0 Flask-SQLAlchemy==3.1.1 Flask-Migrate==4.0.5 Flask-Cors==4.0.0 python-dotenv==1.0.0 google-api-python-client==2.108.0 google-auth-httplib2==0.1.1 google-auth-oauthlib==1.1.0 google-generativeai==0.3.1 PyMySQL==1.1.0 cryptography==41.0.7 PyJWT==2.8.0 redis==5.0.1 celery==5.3.6 reportlab==4.0.8 pandas==2.1.4 textstat==0.7.3 spacy==3.7.2 nltk==3.8.1 python-magic-bin==0.4.14 werkzeug==3.0.1
-
-# Configure environment
+# Configure
 copy .env.example .env  # Windows
 # cp .env.example .env  # Linux/Mac
-
-# Edit .env file with your settings (see Configuration section)
 
 # Initialize database
 python scripts/reset_database.py
@@ -62,92 +109,244 @@ python scripts/reset_database.py
 python run.py
 ```
 
-✅ Backend will be available at: `http://localhost:5000`
+✅ Backend running at: `http://localhost:5000`
 
-3. **Setup Frontend**:
+**3. Setup Frontend** (in new terminal)
 ```bash
 cd frontend/metadoc
-
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
 
-✅ Frontend will be available at: `http://localhost:5173` or `http://localhost:5174`
+✅ Frontend running at: `http://localhost:5173`
 
-4. **Create Test Account**:
-```bash
-# In backend directory with venv activated
-python scripts/create_test_user.py
-```
-
-Default test credentials:
-- **Email**: `professor@example.com`
-- **Password**: `password`
-
-## 📖 Detailed Documentation
-
-For more information, see:
-
-- **[🔧 Backend API Documentation](backend/README.md)** - API endpoints and services
-- **[🎨 Frontend Documentation](frontend/metadoc/README.md)** - Component structure and styling
-- **[📊 Database Schema](backend/app/models/)** - Data models and relationships
+---
 
 ## ⚙️ Configuration
 
-### Backend Configuration
+### Required: Google OAuth & Gemini API
 
-Create `backend/.env` file:
+Create `backend/.env` file with:
 
 ```env
-# Flask Configuration
-FLASK_APP=run.py
-FLASK_ENV=development
-SECRET_KEY=your-secret-key-change-this-in-production
+# Authentication (REQUIRED)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:5000/api/v1/auth/callback
 
-# Database
+# Gemini AI (Optional - for qualitative analysis)
+GEMINI_API_KEY=your-api-key-from-aistudio.google.com
+
+# Database (Default: SQLite - no setup needed)
 DATABASE_URL=sqlite:///metadoc.db
 
 # File Storage
 UPLOAD_FOLDER=uploads
-TEMP_STORAGE_PATH=temp
 MAX_FILE_SIZE=52428800  # 50MB
-
-# CORS Settings
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:5174
-
-# Session Settings
-SESSION_COOKIE_SECURE=False  # Set to True in production with HTTPS
-SESSION_COOKIE_HTTPONLY=True
-SESSION_COOKIE_SAMESITE=Lax
 ```
 
-### Frontend Configuration
+See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for detailed configuration.
 
-The frontend uses Vite proxy configuration (no `.env` needed for development).
+---
 
-See `frontend/metadoc/vite.config.js` for proxy settings.
+## 📂 Project Structure
 
-## 🎯 Key Features
+### Backend
+```
+backend/
+├── app/
+│   ├── api/              # Route handlers (auth, submission, analysis, etc.)
+│   ├── services/         # Business logic (12 service classes)
+│   ├── models/           # Database models (User, Submission, Rubric, etc.)
+│   ├── schemas/          # Request/response DTOs
+│   └── core/             # Config, extensions, utilities
+├── scripts/              # Admin tools (reset DB, migrations)
+├── requirements.txt      # Python dependencies (21 packages)
+└── run.py               # Entry point
+```
 
-### 📤 Submission Management
-- **Google Authentication** - Students log in with their personal Gmail accounts.
-- **Whitelist Gatekeeping** - Direct integration with Class Records to authorize specific students for deadlines.
-- **Google Drive Integration** - Direct link submission with guided permission handling for student files.
-- **Deadline management** - Hard/Soft deadline controls with description and folder organization.
+### Frontend
+```
+frontend/metadoc/src/
+├── pages/                # Main screens (Dashboard, Submission, etc.)
+├── components/           # Reusable React components
+├── services/             # API client (Axios)
+├── contexts/             # Global state (AuthContext)
+└── styles/              # CSS stylesheets
+```
 
-### 📊 Document Analysis
-- **Robust Metadata Extraction** - Extracts Author, Creation Date, and Last Editor from internal XML and Drive API.
-- **Identity Deduplication** - Smart normalization (case-insensitive, whitespace collapse) to merge duplicate contributor profiles.
-- **Content Statistics** - Precise Word, Sentence, and Index computation.
-- **AI Qualitative Insights** - Context-aware document summaries generated by Google Gemini AI based on defined rubrics.
-- **Timeliness Classification** - Automated categorization (On-Time, Rushed, Late) based on submission timestamps.
+---
 
-### 👨‍🏫 Professor Dashboard
-- **Overview statistics** - Active deadlines, total submissions, pending analysis
-- **Folder view** - Organize submissions by deadline
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend Framework** | Flask 3.0.0 |
+| **Database** | SQLite / PostgreSQL (SQLAlchemy ORM) |
+| **Authentication** | Google OAuth 2.0 |
+| **AI/NLP** | Google Gemini, SpaCy, NLTK, TextStat |
+| **Reports** | ReportLab (PDF), Pandas (CSV) |
+| **Frontend** | React 18, Vite, Axios |
+| **Styling** | CSS3, Responsive Design |
+
+---
+
+## 📊 API Endpoints Overview
+
+| Feature | Endpoint | Method |
+|---------|----------|--------|
+| **Authentication** | `POST /api/v1/auth/login` | POST |
+| **Dashboard** | `GET /api/v1/dashboard/overview` | GET |
+| **Submissions** | `POST /api/v1/submission/drive-link` | POST |
+| **Analysis** | `POST /api/v1/insights/analyze/:id` | POST |
+| **Metadata** | `GET /api/v1/metadata/result/:id` | GET |
+| **Reports** | `GET /api/v1/reports/generate/:id` | GET |
+| **Rubrics** | `POST /api/v1/rubrics/` | POST |
+
+See [backend/README.md](backend/README.md) for complete API documentation.
+
+---
+
+## 🎯 Main Features Explained
+
+### 1. **Authentication & Authorization**
+- Secure Google OAuth 2.0 login
+- Session-based authentication
+- Role-based access control (Professor/Student)
+- Whitelist integration with Class Records
+
+### 2. **Document Submission**
+- Accept Google Drive document links
+- Validate file permissions
+- Organize by deadline and category
+- Track submission timeline
+
+### 3. **Analysis Engine**
+- Extract metadata (authors, dates, revision info)
+- Perform NLP analysis (readability, sentiment)
+- Generate AI insights using Gemini
+- Deduplicate identity data
+
+### 4. **Reporting & Export**
+- Generate comprehensive PDF reports
+- Export data to CSV format
+- Include analysis results and metrics
+- Support batch operations
+
+### 5. **Rubric-Based Evaluation**
+- Create custom evaluation criteria
+- Define evaluation levels
+- Apply to submissions
+- Track scoring and feedback
+
+---
+
+## 🚨 Troubleshooting
+
+### Backend Issues
+
+**"pip install" fails**
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**"ModuleNotFoundError" when running app**
+```bash
+# Ensure virtual environment is activated
+# Windows: .\venv\Scripts\Activate.ps1
+# Linux/Mac: source venv/bin/activate
+```
+
+**Database errors**
+```bash
+# Reset database
+python scripts/reset_database.py
+```
+
+### Frontend Issues
+
+**"npm install" fails**
+```bash
+npm cache clean --force
+npm install
+```
+
+**Cannot connect to backend**
+- Verify backend is running: http://localhost:5000
+- Check CORS settings in .env
+- Verify frontend proxy in vite.config.js
+
+---
+
+## 📚 Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [QUICK_START.md](QUICK_START.md) | 10-minute setup guide ⚡ |
+| [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) | Detailed configuration guide |
+| [METADOC_FINAL_SUMMARY.md](METADOC_FINAL_SUMMARY.md) | Complete system overview |
+| [backend/README.md](backend/README.md) | API documentation |
+| [frontend/metadoc/README.md](frontend/metadoc/README.md) | Frontend guide |
+
+---
+
+## 👥 Development Team
+
+**Developers:**
+- Edgar B. Quiandao Jr.
+- Paul G. Abellana
+- Miguel Ray A. Veloso
+- Mark Christian Q. Garing
+
+**Advisers:**
+- Mr. Ralph Laviste
+- Dr. Cheryl Pantaleon
+
+---
+
+## 📝 Project Status
+
+✅ **Production Ready**
+- Fully functional and tested
+- All core features implemented
+- Performance optimized
+- Security best practices applied
+
+**Last Updated:** March 2026
+
+---
+
+## 🤝 Contributing
+
+When developing:
+
+1. Create virtual environment: `python -m venv venv`
+2. Activate it before coding
+3. Install dependencies: `pip install -r requirements.txt`
+4. Create `.env` file with API keys
+5. Run backend and frontend simultaneously
+6. Test changes thoroughly before committing
+
+---
+
+## 📞 Support
+
+For issues or questions:
+1. Check [QUICK_START.md](QUICK_START.md) or [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)
+2. Review the troubleshooting sections
+3. Check the detailed documentation
+4. Contact development team
+
+---
+
+## 📄 License
+
+See LICENSE file for details.
+
+---
+
+**Ready to get started?** → 👉 [QUICK_START.md](QUICK_START.md)
 - **Submission details** - View complete analysis results
 - **Individual file management** - Delete specific submissions
 - **Bulk operations** - Delete entire folders with all submissions

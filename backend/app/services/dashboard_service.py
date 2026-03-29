@@ -158,6 +158,11 @@ class DashboardService:
                 created_at_iso = s.created_at.isoformat() if s.created_at else None
                 if created_at_iso and not created_at_iso.endswith('Z') and '+' not in created_at_iso:
                     created_at_iso += 'Z'
+                deadline_at_iso = None
+                if hasattr(s, 'deadline') and s.deadline and s.deadline.deadline_datetime:
+                    deadline_at_iso = s.deadline.deadline_datetime.isoformat()
+                    if not deadline_at_iso.endswith('Z') and '+' not in deadline_at_iso:
+                        deadline_at_iso += 'Z'
                 recent.append({
                     'id': s.id,
                     'job_id': s.job_id,
@@ -167,7 +172,8 @@ class DashboardService:
                     'student_id': s.student_id,
                     'team_code': student_row.team_code if student_row and student_row.team_code else None,
                     'status': s.status.value,
-                    'created_at': created_at_iso
+                    'created_at': created_at_iso,
+                    'deadline_datetime': deadline_at_iso
                 })
 
             return recent

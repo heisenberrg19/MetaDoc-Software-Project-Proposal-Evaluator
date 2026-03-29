@@ -1052,6 +1052,16 @@
   color: var(--color-gray-700);
 }
 
+.stat-badge.status-active {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.stat-badge.status-closed {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
 .folder-title-group {
   flex: 1;
   margin-right: var(--spacing-md);

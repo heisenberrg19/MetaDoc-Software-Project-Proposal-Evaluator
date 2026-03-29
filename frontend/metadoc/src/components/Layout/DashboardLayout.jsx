@@ -45,6 +45,7 @@ const DashboardLayout = ({ children }) => {
   const isSpecialPage = location.pathname.includes('/reports') || 
                         location.pathname.includes('/dashboard/class-record') || 
                         location.pathname.includes('/dashboard/deliverables') ||
+                        location.pathname.includes('/dashboard/submissions') ||
                         location.pathname === '/dashboard';
 
   const handleLogout = async () => {
