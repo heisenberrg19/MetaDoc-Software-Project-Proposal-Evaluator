@@ -25,7 +25,8 @@ MetaDoc is a comprehensive **document analysis and evaluation platform** designe
 ### 👨‍🏫 **Professor Dashboard**
 - Real-time system overview and statistics
 - Submission and deliverable management
-- Comprehensive report generation (PDF/CSV)
+- Reports page for all submitted files in one glance
+- "View File" support for opening the original Google Drive file link
 - Class Record management (student and team data)
 - Batch operations for submissions
 
@@ -185,7 +186,7 @@ frontend/metadoc/src/
 | **Database** | SQLite / PostgreSQL (SQLAlchemy ORM) |
 | **Authentication** | Google OAuth 2.0 |
 | **AI/NLP** | Google Gemini, SpaCy, NLTK, TextStat |
-| **Reports** | ReportLab (PDF), Pandas (CSV) |
+| **Reports** | Dashboard submission list, filters, and file preview workflows |
 | **Frontend** | React 18, Vite, Axios |
 | **Styling** | CSS3, Responsive Design |
 
@@ -201,7 +202,7 @@ frontend/metadoc/src/
 | **Deadlines** | `GET /api/v1/dashboard/deadlines` | GET |
 | **Analysis** | `POST /api/v1/insights/analyze/:id` | POST |
 | **Metadata** | `GET /api/v1/metadata/result/:id` | GET |
-| **Reports** | `GET /api/v1/reports/generate/:id` | GET |
+| **Reports** | `GET /api/v1/dashboard/submissions` | GET |
 
 See [backend/README.md](backend/README.md) for complete API documentation.
 
@@ -216,7 +217,7 @@ See [backend/README.md](backend/README.md) for complete API documentation.
 - Whitelist integration with Class Records
 
 ### 2. **Document Submission**
-- Accept Google Drive document links
+- Accept Google Drive document links (DOCX workflow)
 - Validate file permissions
 - Organize by deadline and category
 - Track submission timeline
@@ -227,11 +228,12 @@ See [backend/README.md](backend/README.md) for complete API documentation.
 - Generate AI insights using Gemini
 - Deduplicate identity data
 
-### 4. **Reporting & Export**
-- Generate comprehensive PDF reports
-- Export data to CSV format
-- Include analysis results and metrics
-- Support batch operations
+### 4. **Reports & File Review**
+- View all submitted files in one glance from the Reports page
+- Filter and sort submissions by title, team code, and date
+- Open submission details and use "View File" to open the original Google Drive file
+- Review analysis results and metrics per submission
+- Reports in the current UI are for overview and review (not CSV export workflow)
 
 ### 5. **Deadline & Submission Intelligence**
 - Classify submissions as on-time or late

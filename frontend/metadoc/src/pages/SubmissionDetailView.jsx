@@ -190,7 +190,7 @@ const SubmissionDetailView = () => {
 
         <button className="btn btn-primary btn-sm" onClick={handleViewFile} title="View original file">
           <ExternalLink size={16} className="mr-2" />
-          View Full File
+          View File
         </button>
       </div>
 
