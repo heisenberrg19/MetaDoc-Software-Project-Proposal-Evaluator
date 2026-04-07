@@ -570,6 +570,109 @@
   font-size: 0.9rem;
 }
 
+/* Logout Prompt Modal */
+.logout-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.logout-prompt-container {
+  width: 90%;
+  max-width: 320px;
+  background-color: var(--color-white);
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  text-align: center;
+  padding: 2rem 1.5rem;
+  position: relative;
+  animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.logout-prompt-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.logout-prompt-title {
+  font-size: 1.25rem;
+  color: var(--color-maroon-dark);
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+}
+
+.logout-prompt-text {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+  line-height: 1.5;
+  margin: 0 0 1.5rem 0;
+}
+
+.logout-prompt-actions {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.logout-action-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.logout-action-btn.cancel-btn {
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-700);
+}
+
+.logout-action-btn.cancel-btn:hover {
+  background-color: var(--color-gray-200);
+}
+
+.logout-action-btn.confirm-btn {
+  background-color: #ef4444;
+  color: white;
+}
+
+.logout-action-btn.confirm-btn:hover {
+  background-color: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-gray-500);
+  padding: 0.25rem;
+  display: flex;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.modal-close-btn:hover {
+  background-color: var(--color-gray-100);
+  color: var(--color-maroon);
+}
+
 .instruction-modal-body {
   padding: var(--spacing-xl);
   overflow-y: auto;

@@ -35,6 +35,7 @@ const DashboardLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [activeFaqIndex, setActiveFaqIndex] = useState(null);
   const [sidebarHidden, setSidebarHidden] = useState(() => {
@@ -49,6 +50,7 @@ const DashboardLayout = ({ children }) => {
                         location.pathname === '/dashboard';
 
   const handleLogout = async () => {
+    setShowLogoutModal(false);
     await logout();
     navigate('/login');
   };
@@ -203,7 +205,7 @@ const DashboardLayout = ({ children }) => {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="btn-logout" onClick={handleLogout}>
+          <button className="btn-logout" onClick={() => setShowLogoutModal(true)}>
             <LogOut size={18} />
             <span>Logout</span>
           </button>
@@ -253,7 +255,7 @@ const DashboardLayout = ({ children }) => {
           <button
             type="button"
             className="mini-nav-footer-item mini-nav-logout"
-            onClick={handleLogout}
+            onClick={() => setShowLogoutModal(true)}
             title="Logout"
           >
             <LogOut size={20} />
@@ -435,6 +437,34 @@ const DashboardLayout = ({ children }) => {
                   })}
                 </div>
               </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Modal */}
+      {showLogoutModal && (
+        <div className="logout-modal-overlay" onClick={() => setShowLogoutModal(false)}>
+          <div className="logout-prompt-container" onClick={(e) => e.stopPropagation()}>
+            <div className="logout-prompt-body">
+              <h2 className="logout-prompt-title">Logging Out</h2>
+              <p className="logout-prompt-text">
+                Are you sure you want to end your session?
+              </p>
+              <div className="logout-prompt-actions">
+                <button 
+                  className="logout-action-btn cancel-btn" 
+                  onClick={() => setShowLogoutModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="logout-action-btn confirm-btn" 
+                  onClick={handleLogout}
+                >
+                  Yes, Log Out
+                </button>
+              </div>
             </div>
           </div>
         </div>
