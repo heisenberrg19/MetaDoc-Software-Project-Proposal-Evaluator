@@ -13,11 +13,6 @@ import ClassList from './pages/ClassList';
 import StudentLogin from './pages/StudentLogin';
 import './App.css';
 
-const Register = lazy(() =>
-  import('./pages/Register').then((module) => ({
-    default: module.default || module.Register,
-  }))
-);
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -85,14 +80,6 @@ function App() {
             element={
               <PublicRoute>
                 <Login />
-              </PublicRoute>
-            }
-          />
-          <Route
-            path="/register"
-            element={
-              <PublicRoute>
-                <Register />
               </PublicRoute>
             }
           />

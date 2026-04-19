@@ -336,14 +336,6 @@ const Login = () => {
             </Button>
 
 
-
-            <div className="auth-switch">
-              <p>
-                Don't have an account?
-                <Link to="/register" className="link-btn">Register</Link>
-              </p>
-            </div>
-
             <div className="login-footer">
               <div className="login-university-row">
                 <span>Cebu Institute of Technology - University</span>
