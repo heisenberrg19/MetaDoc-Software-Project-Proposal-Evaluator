@@ -221,9 +221,14 @@ const Login = () => {
 
         <div className="login-right">
           <div className="login-card">
-            <div className="login-header">
-              <h2>MetaDoc</h2>
-              <p>Sign in to your account</p>
+            <div className="login-header" style={{ textAlign: 'center', paddingBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ padding: '20px', borderRadius: '50%', backgroundColor: 'rgba(128, 0, 0, 0.05)', border: '2px solid var(--color-maroon)' }}>
+                  <Shield size={48} color="var(--color-maroon)" />
+                </div>
+              </div>
+              <h2 style={{ fontSize: '1.8rem', color: 'var(--color-maroon)', fontWeight: '700' }}>Professor Access</h2>
+              <p style={{ color: '#666', marginTop: '0.5rem', marginBottom: '1.5rem' }}>Authenticate securely with your academic Google Workspace to access the evaluation dashboard.</p>
             </div>
 
             {error && (
