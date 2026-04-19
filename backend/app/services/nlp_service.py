@@ -310,13 +310,17 @@ class NLPService:
         
         try:
             # Construct prompt
-            system_instruction = "You are an expert academic evaluator. "
-            user_prompt = f"Analyze the following academic document:\n\n{text[:2000]}" # Increase limit
+            system_instruction = "You are an expert academic software project evaluator."
+            user_prompt = f"Analyze the following academic project document:\n\n{text[:15000]}" # Increased limit to capture full content and tables
             
             if submission_context:
-                user_prompt = f"Assignment Type: {submission_context.get('assignment_type', 'Unknown')}\n" + user_prompt
+                user_prompt = f"Assignment Title/Context: {submission_context.get('assignment_type', 'Software Project')}\n\n" + user_prompt
             
-            user_prompt += "\n\nProvide a concise summary and key insights."
+            user_prompt += "\n\nPlease provide a highly structured and detailed evaluation of the document based on the following criteria:"
+            user_prompt += "\n1. **Executive Summary**: A concise summary of the project's core idea."
+            user_prompt += "\n2. **Contribution & Task Analysis**: Analyze the roles and contributions of the team members. Evaluate how the tasks are divided, who is doing what, and provide feedback on their workload distribution or collaborative effort."
+            user_prompt += "\n3. **Scope & Viability**: Feedback on the project's realism and technical scope."
+            user_prompt += "\n4. **Key Strengths & Improvements**: Actionable feedback for the team to improve."
 
             model = genai.GenerativeModel('gemini-2.0-flash')
             response = model.generate_content(system_instruction + "\n\n" + user_prompt)
