@@ -41,6 +41,12 @@ class Config:
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-dev-key'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     
+    # CRITICAL FIX for Cross-Browser OAuth (Safari, Firefox, Chrome Strict)
+    # Forces cookies to be allowed across domains (Render -> Vercel)
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'None'
+    
     # Database Configuration
     SQLALCHEMY_DATABASE_URI = _DB_URL
     SQLALCHEMY_TRACK_MODIFICATIONS = False
