@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { FileCheck, Users, Scale, ArrowLeft, ShieldCheck } from 'lucide-react';
 import '../styles/LegalPages.css';
 
 const TermsOfService = () => {
@@ -10,30 +9,19 @@ const TermsOfService = () => {
     <div className="legal-page">
       <div className="legal-shell">
         <div className="legal-topbar">
-          <div className="legal-brand">
-            <div className="legal-brand-mark">
-              <Scale size={18} />
-            </div>
-            <span>MetaDoc</span>
-          </div>
+          <div className="legal-brand">MetaDoc</div>
           <Link to="/" className="legal-nav-link">
-            <ArrowLeft size={16} style={{ verticalAlign: 'text-bottom', marginRight: '0.35rem' }} />
             Back to login
           </Link>
         </div>
 
         <main className="legal-card">
           <section className="legal-hero">
-            <div className="legal-kicker">Terms of Service</div>
-            <h1 className="legal-title">Rules for using MetaDoc</h1>
+            <h1 className="legal-title">Terms of Service</h1>
             <p className="legal-subtitle">
               These terms explain who may use MetaDoc, how the service may be used, and the responsibilities that apply when you sign in and submit or review academic documents.
             </p>
-            <div className="legal-meta">
-              <span className="legal-pill"><FileCheck size={16} /> Last updated: {lastUpdated}</span>
-              <span className="legal-pill"><Users size={16} /> Academic users</span>
-              <span className="legal-pill"><ShieldCheck size={16} /> Security-focused access</span>
-            </div>
+            <p className="legal-updated">Last updated: {lastUpdated}</p>
           </section>
 
           <div className="legal-content">
@@ -83,7 +71,7 @@ const TermsOfService = () => {
         </main>
 
         <div className="legal-footer">
-          <span>MetaDoc - Google Drive-Integrated Metadata Analyzer</span>
+          <span>MetaDoc</span>
           <span>Terms of Service</span>
         </div>
       </div>

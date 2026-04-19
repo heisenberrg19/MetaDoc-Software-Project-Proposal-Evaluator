@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Shield, Lock, FileText, Globe, ArrowLeft } from 'lucide-react';
 import '../styles/LegalPages.css';
 
 const PrivacyPolicy = () => {
@@ -10,30 +9,19 @@ const PrivacyPolicy = () => {
     <div className="legal-page">
       <div className="legal-shell">
         <div className="legal-topbar">
-          <div className="legal-brand">
-            <div className="legal-brand-mark">
-              <Shield size={18} />
-            </div>
-            <span>MetaDoc</span>
-          </div>
+          <div className="legal-brand">MetaDoc</div>
           <Link to="/" className="legal-nav-link">
-            <ArrowLeft size={16} style={{ verticalAlign: 'text-bottom', marginRight: '0.35rem' }} />
             Back to login
           </Link>
         </div>
 
         <main className="legal-card">
           <section className="legal-hero">
-            <div className="legal-kicker">Privacy Policy</div>
-            <h1 className="legal-title">How MetaDoc handles your data</h1>
+            <h1 className="legal-title">Privacy Policy</h1>
             <p className="legal-subtitle">
               This policy explains what information MetaDoc collects, how it is used, and how it is protected when you sign in with Google and use the submission or evaluation features.
             </p>
-            <div className="legal-meta">
-              <span className="legal-pill"><FileText size={16} /> Last updated: {lastUpdated}</span>
-              <span className="legal-pill"><Globe size={16} /> Public app page</span>
-              <span className="legal-pill"><Lock size={16} /> Google OAuth integration</span>
-            </div>
+            <p className="legal-updated">Last updated: {lastUpdated}</p>
           </section>
 
           <div className="legal-content">
@@ -93,7 +81,7 @@ const PrivacyPolicy = () => {
         </main>
 
         <div className="legal-footer">
-          <span>MetaDoc - Google Drive-Integrated Metadata Analyzer</span>
+          <span>MetaDoc</span>
           <span>Privacy Policy</span>
         </div>
       </div>
