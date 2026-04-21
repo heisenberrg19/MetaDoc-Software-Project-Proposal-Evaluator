@@ -1277,6 +1277,62 @@
   color: var(--color-maroon-dark);
 }
 
+.login-legal-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-maroon);
+  font-weight: 600;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.login-legal-button:hover {
+  color: var(--color-maroon-dark);
+}
+
+.legal-modal-shell {
+  max-width: 760px;
+}
+
+.legal-modal-shell .modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.legal-modal-body-content {
+  color: var(--color-gray-700);
+  line-height: 1.65;
+}
+
+.legal-modal-intro {
+  margin-bottom: 1rem;
+}
+
+.legal-modal-section {
+  margin-top: 1rem;
+}
+
+.legal-modal-section h3 {
+  color: var(--color-maroon-dark);
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.legal-modal-section p {
+  margin-bottom: 0.5rem;
+}
+
+.legal-modal-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.legal-modal-section li + li {
+  margin-top: 0.35rem;
+}
+
 .login-university-row {
   display: flex;
   align-items: center;

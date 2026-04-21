@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, Shield, BarChart3, Mail, Lock, FolderOpen, ArrowRight, Search, X, ChevronLeft, Info } from 'lucide-react';
 import Input from '../components/common/Input/Input';
 import Button from '../components/common/Button/Button';
+import Modal from '../components/common/Modal/Modal';
+import LegalContent, { getLegalTitle } from '../components/legal/LegalContent';
 import { authAPI } from '../services/api';
 import metaDocLogo from '../assets/images/MainLogo.png';
 import logo1Img from '../assets/images/Logo1.jpg';
@@ -20,6 +22,7 @@ const Login = () => {
   const { login, handleOAuthCallback } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,6 +30,8 @@ const Login = () => {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [selectedDeveloper, setSelectedDeveloper] = useState(null);
   const [selectedFeature, setSelectedFeature] = useState(null);
+  const legalType = searchParams.get('legal');
+  const isLegalModalOpen = legalType === 'privacy' || legalType === 'terms';
 
   const teamMembers = [
     {
@@ -97,6 +102,18 @@ const Login = () => {
       setError('Failed to initiate Google login. Please try again.');
       setGoogleLoading(false);
     }
+  };
+
+  const openLegalModal = (type) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('legal', type);
+    setSearchParams(nextParams);
+  };
+
+  const closeLegalModal = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('legal');
+    setSearchParams(nextParams);
   };
 
   return (
@@ -181,6 +198,15 @@ const Login = () => {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={isLegalModalOpen}
+        onClose={closeLegalModal}
+        title={getLegalTitle(legalType)}
+        modalClassName="legal-modal-shell"
+      >
+        <LegalContent type={legalType} />
+      </Modal>
 
       <div className="login-container">
         <div className="login-left">
@@ -267,9 +293,13 @@ const Login = () => {
                 <span>Cebu Institute of Technology - University</span>
               </div>
               <div className="login-legal-links">
-                <Link to="/privacy-policy">Privacy Policy</Link>
+                <button type="button" className="login-legal-button" onClick={() => openLegalModal('privacy')}>
+                  Privacy Policy
+                </button>
                 <span aria-hidden="true">•</span>
-                <Link to="/terms">Terms of Service</Link>
+                <button type="button" className="login-legal-button" onClick={() => openLegalModal('terms')}>
+                  Terms of Service
+                </button>
               </div>
               <p className="text-sm">© 2025 MetaDoc. All rights reserved.</p>
             </div>
