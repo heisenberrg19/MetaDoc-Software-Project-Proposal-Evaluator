@@ -23,6 +23,7 @@ class DeadlineDTO:
             'course_code': deadline.course_code,
             'assignment_type': deadline.assignment_type,
             'professor_id': deadline.professor_id,
+            'rubric_id': getattr(deadline, 'rubric_id', None),
             'created_at': deadline.created_at.isoformat() if hasattr(deadline, 'created_at') else None
         }
         
@@ -64,6 +65,7 @@ class DeadlineListDTO:
             'timezone': deadline.timezone,
             'course_code': deadline.course_code,
             'assignment_type': deadline.assignment_type,
+            'rubric_id': getattr(deadline, 'rubric_id', None),
             'created_at': deadline.created_at.isoformat() if hasattr(deadline, 'created_at') else None
         }
         

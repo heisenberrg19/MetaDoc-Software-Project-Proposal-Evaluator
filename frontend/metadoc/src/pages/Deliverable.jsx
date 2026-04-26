@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { dashboardAPI, reportsAPI } from '../services/api';
+import { dashboardAPI, reportsAPI, rubricAPI } from '../services/api';
 import {
   FileText,
   Search,
   ChevronRight,
-  Link as LinkIcon,
+  LinkIcon,
   Users,
   Calendar,
   FileType,
@@ -20,9 +20,14 @@ import {
   Archive,
   Edit2,
   Plus,
-  CheckCircle
-} from 'lucide-react';
+  CheckCircle,
+  ClipboardList,
+  AlertCircle
+} from '../components/common/Icons';
 import '../styles/Deliverable.css';
+import '../styles/RubricCreation.css';
+import RubricEditorModal from '../components/RubricEditorModal';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 const formatStudentId = (input) => {
   if (!input) return 'N/A';
@@ -98,6 +103,10 @@ const Deliverable = () => {
   // Loading State
   const [loading, setLoading] = useState(!!initialDeadlineData); // Start as loading when restoring files view to prevent empty-state flash
   const [deadlinesLoading, setDeadlinesLoading] = useState(true);
+  const { showLongLoading: showLongDeadlinesLoading } = useLoadingState(deadlinesLoading);
+  const { showLongLoading: showLongSubmissionsLoading } = useLoadingState(loading);
+  const [rubrics, setRubrics] = useState([]);
+  const [error, setError] = useState(null);
 
   // Filter/Sort State
   const [searchTerm, setSearchTerm] = useState('');
@@ -129,12 +138,13 @@ const Deliverable = () => {
     title: '',
     description: '',
     deadline_datetime: '',
+    rubric_id: '',
   });
   const [folderFormError, setFolderFormError] = useState(null);
 
-  // Description Modal State
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [selectedDescription, setSelectedDescription] = useState({ title: '', content: '' });
+  const [isRubricModalOpen, setIsRubricModalOpen] = useState(false);
 
   const teamCodeOptions = [...new Set(
     students
@@ -146,6 +156,7 @@ const Deliverable = () => {
   useEffect(() => {
     fetchDeadlines();
     fetchStudents();
+    fetchRubrics();
   }, []);
 
   // Handle deep link from Dashboard (deadlineId only, no full object)
@@ -187,6 +198,7 @@ const Deliverable = () => {
       setDeadlines(response.data.deadlines || []);
     } catch (err) {
       console.error('Failed to fetch deadlines:', err);
+      setError('Failed to Connect to Server');
     } finally {
       setDeadlinesLoading(false);
     }
@@ -257,9 +269,26 @@ const Deliverable = () => {
     }
   };
 
+  const fetchRubrics = async () => {
+    try {
+      const response = await rubricAPI.getRubrics();
+      setRubrics(response.data);
+    } catch (err) {
+      console.error("Failed to fetch DB rubrics, using local storage fallback", err);
+      const savedRubrics = localStorage.getItem('metadoc_rubrics');
+      if (savedRubrics) {
+        try {
+          setRubrics(JSON.parse(savedRubrics));
+        } catch (e) {
+          setRubrics([]);
+        }
+      }
+    }
+  };
+
   const handleNewFolder = () => {
     setEditingFolder(null);
-    setFolderFormData({ title: '', description: '', deadline_datetime: '' });
+    setFolderFormData({ title: '', description: '', deadline_datetime: '', rubric_id: '' });
     setFolderFormError(null);
     setShowFolderModal(true);
   };
@@ -279,6 +308,7 @@ const Deliverable = () => {
       title: folder.title,
       description: folder.description || '',
       deadline_datetime: formattedDateTime,
+      rubric_id: folder.rubric_id || '',
     });
     setFolderFormError(null);
     setShowFolderModal(true);
@@ -529,17 +559,41 @@ const Deliverable = () => {
         </div>
 
         {deadlinesLoading ? (
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <p>Loading deliverables...</p>
-          </div>
+          showLongDeadlinesLoading ? (
+            <div className="spinner-container-maroon">
+              <div className="spinner-maroon"></div>
+              <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Loading Deliverables List...</p>
+            </div>
+          ) : (
+            <div className="folders-grid">
+              {[...Array(8)].map((_, i) => (
+                <div key={`skeleton-${i}`} className="folder-card-skeleton">
+                  <div className="skeleton-folder-header">
+                    <div className="skeleton-title-group">
+                      <div className="skeleton skeleton-folder-title"></div>
+                      <div className="skeleton skeleton-folder-meta"></div>
+                    </div>
+                    <div className="skeleton-folder-actions">
+                      <div className="skeleton skeleton-action-circle"></div>
+                      <div className="skeleton skeleton-action-circle"></div>
+                    </div>
+                  </div>
+                  <div className="skeleton skeleton-folder-body"></div>
+                  <div className="skeleton-folder-footer">
+                    <div className="skeleton skeleton-badge"></div>
+                    <div className="skeleton skeleton-badge"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         ) : filteredDeadlines.length === 0 ? (
-          <div className="empty-state">
-            <FolderIcon size={64} />
-            <h3>{folderSearchTerm ? 'No deliverables match your search' : 'No Deliverables Created'}</h3>
-            <p>{folderSearchTerm ? 'Try a different search term' : 'Create a deadline in "Deadlines" to generate a deliverable.'}</p>
-          </div>
-        ) : (
+            <div className="empty-state">
+              <FolderIcon size={64} />
+              <h3>{folderSearchTerm ? 'No deliverables match your search' : 'No Deliverables Created'}</h3>
+              <p>{folderSearchTerm ? 'Try a different search term' : 'Create a deadline in "Deadlines" to generate a deliverable.'}</p>
+            </div>
+          ) : (
           <div className="folders-grid">
             {filteredDeadlines.map(deadline => {
               const isPast = new Date(deadline.deadline_datetime) < new Date();
@@ -560,30 +614,30 @@ const Deliverable = () => {
                         </div>
                       </div>
                       <div className="folder-actions flex gap-1">
-                      <button
-                        className="btn-edit-folder"
-                        title="Edit Deliverable"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditFolder(deadline);
-                        }}
-                      >
-                        <Edit2 size={18} />
-                      </button>
-                      <button
-                        className="btn-edit-folder"
-                        title="Delete Deliverable"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteTarget({ id: deadline.id, filename: deadline.title });
-                          setDeleteType('folder');
-                          setShowDeleteModal(true);
-                        }}
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                        <button
+                          className="btn-edit-folder"
+                          title="Edit Deliverable"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditFolder(deadline);
+                          }}
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button
+                          className="btn-edit-folder"
+                          title="Delete Deliverable"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget({ id: deadline.id, filename: deadline.title });
+                            setDeleteType('folder');
+                            setShowDeleteModal(true);
+                          }}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
                     <div className="folder-card-body">
                       {deadline.description ? (
                         <div className="folder-description-container">
@@ -617,6 +671,12 @@ const Deliverable = () => {
                         {isPast ? 'Closed' : 'Active'}
                       </span>
                     </div>
+                    {deadline.rubric_id && (
+                      <div className="folder-rubric-link">
+                        <ClipboardList size={12} />
+                        <span>Rubric: {rubrics.find(r => r.id === deadline.rubric_id)?.name || 'Linked'}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -710,10 +770,49 @@ const Deliverable = () => {
       </div>
 
       {loading ? (
-        <div className="loading-state">
-          <div className="spinner"></div>
-          <p>Loading submissions...</p>
-        </div>
+        showLongSubmissionsLoading ? (
+          <div className="spinner-container-maroon">
+            <div className="spinner-maroon"></div>
+            <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Retrieving submissions...</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>File Name</th>
+                  <th>Student ID</th>
+                  <th>Student Name</th>
+                  <th>Date Submitted</th>
+                  <th>Last Modified</th>
+                  <th>Course & Year</th>
+                  <th>Team Code</th>
+                  <th>SY</th>
+                  <th>Semester</th>
+                  <th>Status</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...Array(10)].map((_, i) => (
+                  <tr key={`skeleton-${i}`}>
+                    <td><div className="skeleton" style={{ height: '20px', width: '80%', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '80px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '90px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '90px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '70px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '60px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '60px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '20px', width: '60px', borderRadius: '4px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '24px', width: '70px', borderRadius: '12px' }}></div></td>
+                    <td><div className="skeleton" style={{ height: '24px', width: '40px', borderRadius: '4px', marginLeft: 'auto' }}></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       ) : submissions.length === 0 ? (
         <div className="empty-state">
           <FileText size={64} />
@@ -883,6 +982,16 @@ const Deliverable = () => {
       )}
     </div>
   );
+
+  if (error) {
+    return (
+      <div className="dashboard-error" style={{ height: '70vh' }}>
+        <AlertCircle size={48} />
+        <h3>{error}</h3>
+        <p>Unable to load deliverables. Please check your backend connection and try again.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="submissions-page">
@@ -1107,6 +1216,42 @@ const Deliverable = () => {
                 <small className="form-text">Select a future date and time</small>
               </div>
 
+              <div className="form-group folder-form-group">
+                <label className="folder-form-label" htmlFor="rubric_id">EVALUATION RUBRIC</label>
+                <select
+                  id="rubric_id"
+                  className="form-control"
+                  value={folderFormData.rubric_id}
+                  onChange={(e) => {
+                    if (e.target.value === 'CREATE_NEW') {
+                      setIsRubricModalOpen(true);
+                      return;
+                    }
+                    setFolderFormData({ ...folderFormData, rubric_id: e.target.value });
+                  }}
+                >
+                  {rubrics.length > 0 ? (
+                    <>
+                      <option value="">No Rubric Selected</option>
+                      {rubrics.map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                      <option value="CREATE_NEW" style={{ fontWeight: 'bold', color: 'var(--color-maroon)' }}>+ Create New Rubric</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="">No Rubrics Found</option>
+                      <option value="CREATE_NEW">+ Create New Rubric</option>
+                    </>
+                  )}
+                </select>
+                <small className="form-text">
+                  {rubrics.length === 0
+                    ? 'No rubrics found. Click to create one.'
+                    : 'Select a rubric or create a new one.'}
+                </small>
+              </div>
+
               <div className="folder-form-footer">
                 <button type="submit" className="btn btn-folder-create">
                   {editingFolder ? 'Update Deliverable' : 'Create Deliverable'}
@@ -1162,6 +1307,26 @@ const Deliverable = () => {
           </div>
         </div>
       )}
+      <RubricEditorModal
+        isOpen={isRubricModalOpen}
+        onClose={() => setIsRubricModalOpen(false)}
+        onSave={async (newRubric) => {
+          try {
+            const response = await rubricAPI.createRubric(newRubric);
+            const savedRubric = response.data;
+            setRubrics(prev => [...prev, savedRubric]);
+            setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+            setIsRubricModalOpen(false);
+          } catch (err) {
+            console.error("Failed to save new rubric from Deliverable view", err);
+            // Fallback
+            const localRubric = { ...newRubric, id: `local-${Date.now()}` };
+            setRubrics(prev => [...prev, localRubric]);
+            setFolderFormData(prev => ({ ...prev, rubric_id: localRubric.id }));
+            setIsRubricModalOpen(false);
+          }
+        }}
+      />
     </div>
   );
 };

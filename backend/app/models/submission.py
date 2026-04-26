@@ -136,9 +136,10 @@ class SubmissionToken(BaseModel):
     is_active = db.Column(db.Boolean, default=True)
     usage_count = db.Column(db.Integer, default=0)
     max_usage = db.Column(db.Integer, nullable=True)
-    deadline_id = db.Column(db.String(36), nullable=True)
+    deadline_id = db.Column(db.String(36), db.ForeignKey('deadlines.id', ondelete='SET NULL'), nullable=True)
     
     professor = db.relationship('User', backref='submission_tokens')
+    deadline = db.relationship('Deadline', backref='submission_tokens')
     
     def __repr__(self):
         return f'<SubmissionToken {self.token[:8]}... by {self.professor_id}>'

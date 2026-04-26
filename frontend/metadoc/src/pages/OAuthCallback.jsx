@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Loader, CheckCircle, XCircle, RefreshCcw } from 'lucide-react';
+import { Loader, CheckCircle, XCircle, RefreshCcw } from '../components/common/Icons';
 import Card from '../components/common/Card/Card';
 import '../styles/OAuthCallback.css';
 

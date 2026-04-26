@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { FileText, Shield, BarChart3, Mail, Lock, FolderOpen, ArrowRight, Search, X, ChevronLeft, Info } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { FileText, Shield, BarChart3, Mail, Lock, FolderOpen, ArrowRight, Search, X, ChevronLeft, Info } from '../components/common/Icons';
 import Input from '../components/common/Input/Input';
 import Button from '../components/common/Button/Button';
 import Modal from '../components/common/Modal/Modal';
@@ -30,8 +30,6 @@ const Login = () => {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [selectedDeveloper, setSelectedDeveloper] = useState(null);
   const [selectedFeature, setSelectedFeature] = useState(null);
-  const legalType = searchParams.get('legal');
-  const isLegalModalOpen = legalType === 'privacy' || legalType === 'terms';
 
   const teamMembers = [
     {
@@ -104,17 +102,6 @@ const Login = () => {
     }
   };
 
-  const openLegalModal = (type) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('legal', type);
-    setSearchParams(nextParams);
-  };
-
-  const closeLegalModal = () => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete('legal');
-    setSearchParams(nextParams);
-  };
 
   return (
     <div className="login-page">
@@ -133,14 +120,14 @@ const Login = () => {
                   </div>
                   <h2>About</h2>
                 </div>
-                
+
                 <div className="about-section">
                   <h3>Our System</h3>
                   <p>
                     MetaDoc is an intelligent, Google Drive-Integrated Metadata Analyzer designed to streamline the evaluation of academic software project proposals. It leverages rule-based heuristics and Natural Language Processing (NLP) to automate metadata extraction, validate content, and provide actionable insights.
                   </p>
                 </div>
-                
+
                 <div className="about-section">
                   <h3>The Developers</h3>
                   <p>
@@ -199,24 +186,16 @@ const Login = () => {
         </div>
       )}
 
-      <Modal
-        isOpen={isLegalModalOpen}
-        onClose={closeLegalModal}
-        title={getLegalTitle(legalType)}
-        modalClassName="legal-modal-shell"
-      >
-        <LegalContent type={legalType} />
-      </Modal>
 
       <div className="login-container">
         <div className="login-left">
           <div className="brand-header">
             <div className="brand-flow-visual single-logo" aria-hidden="true" style={{ justifyContent: 'center', marginBottom: '2rem' }}>
-              <img 
-                src={logo4Img} 
-                alt="MetaDoc Logo" 
-                className="clickable-brand-logo" 
-                onClick={() => setShowAboutModal(true)} 
+              <img
+                src={logo4Img}
+                alt="MetaDoc Logo"
+                className="clickable-brand-logo"
+                onClick={() => setShowAboutModal(true)}
                 title="Click to learn about MetaDoc!"
               />
             </div>
@@ -227,9 +206,9 @@ const Login = () => {
 
           <div className="features-list">
             {systemFeatures.map(feature => (
-              <div 
-                key={feature.id} 
-                className="feature-item cursor-pointer" 
+              <div
+                key={feature.id}
+                className="feature-item cursor-pointer"
                 onClick={() => setSelectedFeature(feature)}
                 title="Click to learn more"
               >
@@ -293,13 +272,13 @@ const Login = () => {
                 <span>Cebu Institute of Technology - University</span>
               </div>
               <div className="login-legal-links">
-                <button type="button" className="login-legal-button" onClick={() => openLegalModal('privacy')}>
+                <Link to="/privacy-policy" className="login-legal-button">
                   Privacy Policy
-                </button>
+                </Link>
                 <span aria-hidden="true">•</span>
-                <button type="button" className="login-legal-button" onClick={() => openLegalModal('terms')}>
+                <Link to="/terms-of-service" className="login-legal-button">
                   Terms of Service
-                </button>
+                </Link>
               </div>
               <p className="text-sm">© 2025 MetaDoc. All rights reserved.</p>
             </div>

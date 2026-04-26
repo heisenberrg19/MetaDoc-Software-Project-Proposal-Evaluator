@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogIn, Info } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { LogIn, Info } from '../components/common/Icons';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Modal from '../components/common/Modal/Modal';
-import LegalContent, { getLegalTitle } from '../components/legal/LegalContent';
 import logoImg from '../assets/images/MainLogo.png';
 import authLogoImg from '../assets/images/Logo4.jpg';
 import logo2Img from '../assets/images/Logo2.jpg';
@@ -17,8 +16,6 @@ const StudentLogin = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const token = searchParams.get('token');
-    const legalType = searchParams.get('legal');
-    const isLegalModalOpen = legalType === 'privacy' || legalType === 'terms';
     const [loading, setLoading] = useState(false);
     const [studentLinks, setStudentLinks] = useState([]);
     const [fetchingLinks, setFetchingLinks] = useState(false);
@@ -60,17 +57,6 @@ const StudentLogin = () => {
         }
     };
 
-    const openLegalModal = (type) => {
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.set('legal', type);
-        setSearchParams(nextParams);
-    };
-
-    const closeLegalModal = () => {
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.delete('legal');
-        setSearchParams(nextParams);
-    };
 
     if (isAuthenticated && !authLoading) {
         // Token present: useEffect navigates to /submit immediately — render nothing to avoid any flash.
@@ -103,13 +89,13 @@ const StudentLogin = () => {
                             <span>Cebu Institute of Technology - University</span>
                             <span className="university-footer-version">MetaDoc V1.0</span>
                             <div className="login-legal-links">
-                                <button type="button" className="login-legal-button" onClick={() => openLegalModal('privacy')}>
+                                <Link to="/privacy-policy" className="login-legal-button">
                                     Privacy Policy
-                                </button>
+                                </Link>
                                 <span aria-hidden="true">•</span>
-                                <button type="button" className="login-legal-button" onClick={() => openLegalModal('terms')}>
+                                <Link to="/terms-of-service" className="login-legal-button">
                                     Terms of Service
-                                </button>
+                                </Link>
                             </div>
                         </div>
                     </div>
@@ -231,25 +217,17 @@ const StudentLogin = () => {
                     <span>Cebu Institute of Technology - University</span>
                     <span className="university-footer-version">MetaDoc V1.0</span>
                     <div className="login-legal-links">
-                        <button type="button" className="login-legal-button" onClick={() => openLegalModal('privacy')}>
+                        <Link to="/privacy-policy" className="login-legal-button">
                             Privacy Policy
-                        </button>
+                        </Link>
                         <span aria-hidden="true">•</span>
-                        <button type="button" className="login-legal-button" onClick={() => openLegalModal('terms')}>
+                        <Link to="/terms-of-service" className="login-legal-button">
                             Terms of Service
-                        </button>
+                        </Link>
                     </div>
                 </div>
             </div>
 
-            <Modal
-                isOpen={isLegalModalOpen}
-                onClose={closeLegalModal}
-                title={getLegalTitle(legalType)}
-                modalClassName="legal-modal-shell"
-            >
-                <LegalContent type={legalType} />
-            </Modal>
         </div>
     );
 };

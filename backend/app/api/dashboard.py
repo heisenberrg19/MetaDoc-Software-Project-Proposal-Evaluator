@@ -856,7 +856,7 @@ def update_student(student_id):
 @require_authentication()
 def get_contribution_report(submission_id):
     """
-    Generate Collaborative Contribution Tracking report for a submission.
+    Generate AI Analysis & Evaluation report for a submission.
     Prioritizes REAL DOCX tracked changes analysis over Google Drive API estimates.
     """
     try:
@@ -1077,3 +1077,96 @@ def get_contribution_report(submission_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': 'Failed to generate contribution report'}), 500
+
+@dashboard_bp.route('/submissions/<submission_id>/evaluate', methods=['POST'])
+@require_authentication()
+def evaluate_submission(submission_id):
+    """Perform AI evaluation based on a rubric"""
+    try:
+        user_id = request.current_user.id
+        data = request.get_json()
+        
+        if not data or 'rubric' not in data:
+            return jsonify({'error': 'Rubric data is required'}), 400
+            
+        result, error = dashboard_service.evaluate_submission(submission_id, user_id, data['rubric'])
+        
+        if error:
+            return jsonify({'error': error}), 400
+            
+        return jsonify(result)
+        
+    except Exception as e:
+        current_app.logger.error(f"AI evaluation route error: {e}")
+        return jsonify({'error': 'Failed to perform AI evaluation'}), 500
+
+# Rubric Management Routes
+@dashboard_bp.route('/rubrics', methods=['GET'])
+@require_authentication()
+def get_rubrics():
+    """Get all rubrics for the current user"""
+    try:
+        user_id = request.current_user.id
+        from app.services.rubric_service import RubricService
+        rubric_service = RubricService()
+        rubrics, error = rubric_service.get_user_rubrics(user_id)
+        
+        if error:
+            return jsonify({'error': error}), 400
+            
+        return jsonify(rubrics)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@dashboard_bp.route('/rubrics', methods=['POST'])
+@require_authentication()
+def create_rubric():
+    """Create a new rubric"""
+    try:
+        user_id = request.current_user.id
+        data = request.get_json()
+        from app.services.rubric_service import RubricService
+        rubric_service = RubricService()
+        rubric, error = rubric_service.create_rubric(user_id, data)
+        
+        if error:
+            return jsonify({'error': error}), 400
+            
+        return jsonify(rubric), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@dashboard_bp.route('/rubrics/<rubric_id>', methods=['PUT'])
+@require_authentication()
+def update_rubric(rubric_id):
+    """Update an existing rubric"""
+    try:
+        user_id = request.current_user.id
+        data = request.get_json()
+        from app.services.rubric_service import RubricService
+        rubric_service = RubricService()
+        rubric, error = rubric_service.update_rubric(rubric_id, user_id, data)
+        
+        if error:
+            return jsonify({'error': error}), 400
+            
+        return jsonify(rubric)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@dashboard_bp.route('/rubrics/<rubric_id>', methods=['DELETE'])
+@require_authentication()
+def delete_rubric(rubric_id):
+    """Delete a rubric"""
+    try:
+        user_id = request.current_user.id
+        from app.services.rubric_service import RubricService
+        rubric_service = RubricService()
+        success, error = rubric_service.delete_rubric(rubric_id, user_id)
+        
+        if error:
+            return jsonify({'error': error}), 400
+            
+        return jsonify({'message': 'Rubric deleted successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

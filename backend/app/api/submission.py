@@ -380,10 +380,16 @@ def get_generated_links():
         frontend_url = current_app.config.get('FRONTEND_URL', 'http://localhost:5173')
         links = []
         for token in tokens:
-            deadline = deadline_map.get(getattr(token, 'deadline_id', None))
+            d_id = getattr(token, 'deadline_id', None)
+            deadline = deadline_map.get(d_id)
+            
+            # Skip links that have no associated deadline (either deleted or legacy)
+            if not deadline:
+                continue
+                
             links.append({
-                'deadline_id': getattr(token, 'deadline_id', None),
-                'title': deadline.title if deadline else 'Untitled Deliverable',
+                'deadline_id': d_id,
+                'title': deadline.title,
                 'token': token.token,
                 'url': f"{frontend_url}/submit?token={token.token}",
                 'expires_at': token.expires_at.isoformat() if token.expires_at else None,

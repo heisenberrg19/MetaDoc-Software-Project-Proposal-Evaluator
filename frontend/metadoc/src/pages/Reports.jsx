@@ -10,9 +10,11 @@ import {
     CheckCircle,
     AlertTriangle,
     TrendingUp,
-    X
-} from 'lucide-react';
+    X,
+    AlertCircle
+} from '../components/common/Icons';
 import { dashboardAPI } from '../services/api';
+import { useLoadingState } from '../hooks/useLoadingState';
 import '../styles/Reports.css';
 
 const formatStudentId = (input) => {
@@ -137,7 +139,9 @@ const Reports = () => {
     const [submissions, setSubmissions] = useState([]);
     const [deadlines, setDeadlines] = useState([]);
     const [students, setStudents] = useState([]);
+    const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
+    const { showLongLoading } = useLoadingState(loading);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOption, setSortOption] = useState('none');
     const [teamCodeFilter, setTeamCodeFilter] = useState('none');
@@ -202,6 +206,7 @@ const Reports = () => {
             setStudents(studentsResponse.data?.students || []);
         } catch (error) {
             console.error('Failed to fetch submissions for reports:', error);
+            setError('Failed to Connect to Server');
             setSubmissions([]);
             setDeadlines([]);
             setStudents([]);
@@ -302,19 +307,25 @@ const Reports = () => {
         setSelectedFilename('');
     };
 
-    return (
-        <div className="reports-page">
-            <div className="reports-container">
-                <header className="reports-header">
-                    <div className="header-title">
-                        <TrendingUp size={24} className="text-maroon" />
-                        <h1>Reports</h1>
-                    </div>
-                </header>
+    if (error) {
+        return (
+            <div className="dashboard-error" style={{ height: '70vh' }}>
+                <AlertCircle size={48} />
+                <h3>{error}</h3>
+                <p>Unable to load reports data. Please check your backend connection and try again.</p>
+            </div>
+        );
+    }
 
-                <p className="reports-description">
-                    View all submitted files by deliverable title, track submission details, and manage report records in one place.
-                </p>
+    return (
+        <div className="reports-page fade-in">
+            <div className="reports-container">
+                <div className="submissions-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--spacing-xl)' }}>
+                    <div>
+                        <h1>Reports</h1>
+                        <p>View all submitted files by deliverable title, track submission details, and manage report records in one place.</p>
+                    </div>
+                </div>
 
                 <div className="reports-toolbar">
                     <div className="search-input-wrapper">
@@ -383,9 +394,43 @@ const Reports = () => {
 
                         <tbody>
                             {loading && (
-                                <tr>
-                                    <td colSpan="12" className="empty-table-state">Loading submitted files...</td>
-                                </tr>
+                                showLongLoading ? (
+                                    <tr>
+                                        <td colSpan="12" style={{ padding: '3rem 0' }}>
+                                            <div className="spinner-container-maroon">
+                                                <div className="spinner-maroon"></div>
+                                                <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Loading Reports...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    [...Array(10)].map((_, i) => (
+                                        <tr key={`skeleton-${i}`} className="skeleton-row">
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td>
+                                                <div className="skeleton-flex">
+                                                    <div className="skeleton skeleton-circle"></div>
+                                                    <div className="skeleton skeleton-cell"></div>
+                                                </div>
+                                            </td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell" style={{ width: '60px', height: '24px', borderRadius: '12px' }}></div></td>
+                                            <td className="text-right">
+                                                <div className="skeleton-flex" style={{ justifyContent: 'flex-end' }}>
+                                                    <div className="skeleton skeleton-circle" style={{ width: '20px', height: '20px' }}></div>
+                                                    <div className="skeleton skeleton-circle" style={{ width: '20px', height: '20px' }}></div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )
                             )}
 
                             {!loading && visibleRows.length === 0 && (

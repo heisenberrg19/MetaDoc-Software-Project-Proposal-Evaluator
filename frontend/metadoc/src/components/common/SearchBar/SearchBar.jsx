@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search } from 'lucide-react';
+import { Search } from '../Icons';
 import './SearchBar.css';
 
 const SearchBar = ({ value, onChange, placeholder = 'Search...', className = '' }) => {

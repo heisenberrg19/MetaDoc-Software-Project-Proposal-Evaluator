@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle } from '../Icons';
 import './Modal.css';
 
 const Modal = ({

@@ -153,27 +153,39 @@ def get_readability_analysis(submission_id):
         current_app.logger.error(f"Readability analysis error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@nlp_bp.route('/entities/<submission_id>', methods=['GET'])
-def get_named_entities(submission_id):
-    """Get named entity analysis for a submission"""
+@nlp_bp.route('/generate-prompt', methods=['POST'])
+def generate_rubric_prompt():
+    """Generate a professional AI system prompt based on rubric data"""
     try:
-        submission = Submission.query.filter_by(id=submission_id).first()
+        rubric_data = request.json
+        if not rubric_data:
+            return jsonify({'error': 'Rubric data required'}), 400
+            
+        generated_prompt, error = get_nlp_service().generate_rubric_system_prompt(rubric_data)
         
-        if not submission or not submission.analysis_result:
-            return jsonify({'error': 'Submission or analysis not found'}), 404
-        
-        text = submission.analysis_result.document_text
-        if not text:
-            return jsonify({'error': 'Document text not available'}), 400
-        
-        entity_results = get_nlp_service()._extract_named_entities(text)
-        
-        return jsonify({
-            'submission_id': submission_id,
-            'named_entity_analysis': entity_results
-        })
-        
+        if error:
+            return jsonify({'error': error}), 500
+            
+        return jsonify({'prompt': generated_prompt}), 200
     except Exception as e:
-        current_app.logger.error(f"Named entity analysis error: {e}")
+        current_app.logger.error(f"Generate prompt error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@nlp_bp.route('/generate-criteria', methods=['POST'])
+def generate_criteria():
+    """Generate professional rubric criteria using Gemini AI"""
+    try:
+        data = request.json
+        title = data.get('title', 'General Research')
+        description = data.get('description', '')
+        
+        criteria, error = get_nlp_service().generate_rubric_criteria(title, description)
+        
+        if error:
+            return jsonify({'error': error}), 500
+            
+        return jsonify({'criteria': criteria}), 200
+    except Exception as e:
+        current_app.logger.error(f"Generate criteria error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 

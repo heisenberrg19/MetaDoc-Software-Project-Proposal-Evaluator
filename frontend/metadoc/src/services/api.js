@@ -119,6 +119,15 @@ export const dashboardAPI = {
       timeout: 60000,
     }
   ),
+  runAIEvaluation: (submissionId, rubric) => api.post(`/dashboard/submissions/${submissionId}/evaluate`, { rubric }),
+};
+
+// Rubric API
+export const rubricAPI = {
+  getRubrics: () => api.get('/dashboard/rubrics'),
+  createRubric: (data) => api.post('/dashboard/rubrics', data),
+  updateRubric: (id, data) => api.put(`/dashboard/rubrics/${id}`, data),
+  deleteRubric: (id) => api.delete(`/dashboard/rubrics/${id}`),
 };
 
 // Metadata API
@@ -139,6 +148,7 @@ export const nlpAPI = {
   analyzeSubmission: (submissionId) => api.post(`/nlp/analyze/${submissionId}`),
   getReadability: (submissionId) => api.get(`/nlp/readability/${submissionId}`),
   getEntities: (submissionId) => api.get(`/nlp/entities/${submissionId}`),
+  generateCriteria: (data) => api.post('/nlp/generate-criteria', data),
 };
 
 // Reports API

@@ -405,7 +405,8 @@ class DashboardService:
                 deadline_datetime=datetime.fromisoformat(deadline_data['deadline_datetime']),
                 timezone=deadline_data.get('timezone', 'UTC'),
                 course_code=deadline_data.get('course_code'),
-                assignment_type=deadline_data.get('assignment_type')
+                assignment_type=deadline_data.get('assignment_type'),
+                rubric_id=deadline_data.get('rubric_id')
             )
             
             db.session.add(deadline)
@@ -444,6 +445,8 @@ class DashboardService:
                 deadline.course_code = deadline_data['course_code']
             if 'assignment_type' in deadline_data:
                 deadline.assignment_type = deadline_data['assignment_type']
+            if 'rubric_id' in deadline_data:
+                deadline.rubric_id = deadline_data['rubric_id']
 
             # Keep generated link expiry aligned with the edited deliverable deadline.
             if new_deadline_datetime is not None:
@@ -475,6 +478,12 @@ class DashboardService:
             
             # Get all submissions for this deadline
             submissions = Submission.query.filter_by(deadline_id=deadline_id).all()
+            
+            # Delete associated submission tokens
+            try:
+                SubmissionToken.query.filter_by(deadline_id=deadline_id).delete()
+            except Exception as token_err:
+                current_app.logger.warning(f"Could not delete associated tokens: {token_err}")
             
             # Delete each submission and its related data
             import os
@@ -825,4 +834,85 @@ class DashboardService:
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Unarchive students error: {e}")
+            return None, str(e)
+
+    def evaluate_submission(self, submission_id, user_id, rubric_data):
+        """Perform AI evaluation of a submission using a provided rubric"""
+        try:
+            submission = Submission.query.filter_by(
+                id=submission_id,
+                professor_id=user_id
+            ).first()
+            
+            if not submission:
+                return None, "Submission not found"
+            
+            if not submission.analysis_result or not submission.analysis_result.document_text:
+                return None, "Document content not available for analysis. Please refresh the submission first."
+            
+            from app.services.nlp_service import NLPService
+            nlp_service = NLPService()
+            
+            context = {
+                'assignment_type': submission.deadline.assignment_type if submission.deadline else 'Project',
+                'title': submission.deadline.title if submission.deadline else 'Untitled Submission',
+                'course_code': submission.deadline.course_code if submission.deadline else 'N/A',
+                'description': submission.deadline.description if submission.deadline else 'No specific description provided.'
+            }
+            
+            # Add contributor metadata for collaborative analysis
+            if submission.analysis_result.document_metadata:
+                context['contributors'] = submission.analysis_result.document_metadata.get('contributors', [])
+            
+            evaluation, error = nlp_service.evaluate_with_rubric(
+                submission.analysis_result.document_text,
+                rubric_data,
+                submission_context=context
+            )
+            
+            if error:
+                return None, error
+                
+            # Recalculate total weighted score based on rubric weights
+            try:
+                criteria_map = {c.get('name'): float(c.get('weight', 0)) for c in rubric_data.get('criteria', [])}
+                total_weighted_score = 0
+                total_found_weight = 0
+                
+                for eval_item in evaluation.get('rubric_evaluation', []):
+                    c_name = eval_item.get('criterion_name')
+                    c_score = float(eval_item.get('score', 0))
+                    
+                    if c_name in criteria_map:
+                        weight = criteria_map[c_name]
+                        total_weighted_score += (c_score * (weight / 100.0))
+                        total_found_weight += weight
+                
+                # Update the score in the evaluation dictionary
+                if total_found_weight > 0:
+                    evaluation['score'] = round(total_weighted_score, 2)
+            except Exception as math_err:
+                current_app.logger.warning(f"Score recalculation failed: {math_err}")
+                
+            # Update the analysis result with AI evaluation
+            analysis = submission.analysis_result
+            analysis.ai_summary = evaluation.get('ai_summary')
+            
+            # MERGE into nlp_results instead of overwriting to prevent data loss 
+            # if local NLP analysis runs later.
+            if analysis.nlp_results and isinstance(analysis.nlp_results, dict):
+                merged_nlp = {**analysis.nlp_results, **evaluation}
+                analysis.nlp_results = merged_nlp
+            else:
+                analysis.nlp_results = evaluation
+            
+            # Also store in ai_insights as a backup for the DTO
+            analysis.ai_insights = evaluation
+            
+            db.session.commit()
+            return evaluation, None
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"AI Evaluation error: {e}")
             return None, str(e)

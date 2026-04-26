@@ -453,7 +453,7 @@ class DriveService:
         if not name and email:
             name = email.split('@')[0] if '@' in email else email
         if not name and not email:
-            name = 'Unverified Contributor'
+            name = 'Anonymous Contributor'
 
         key = email or name
         return key, name, email
@@ -638,6 +638,7 @@ class DriveService:
         single_revision_default_minutes=5,
     ):
         """Aggregate metadata-only revisions into per-user active edit sessions."""
+        window_size = float(session_window_minutes)
         allowed = {
             str(email or '').strip().lower()
             for email in (allowed_emails or [])
@@ -656,6 +657,8 @@ class DriveService:
             user = rev.get('lastModifyingUser') or {}
             email = str(user.get('emailAddress') or '').strip().lower()
             display_name = str(user.get('displayName') or '').strip()
+            if not display_name and not user:
+                display_name = 'Anonymous Contributor'
             ts = self._parse_revision_timestamp(rev.get('modifiedTime'))
             if not ts:
                 continue
@@ -669,23 +672,59 @@ class DriveService:
                     identity_source = 'recovered_from_metadata'
 
             is_verified_roster_member = bool(email) and ((not allowed) or (email in allowed))
+            
+            # Record the actual email found in Drive history/permissions before matching
+            original_drive_email = email
+            
+            # Smarter matching: if email not in roster, check if name matches someone in roster
+            roster_email_for_grouping = None
+            if not is_verified_roster_member and display_name:
+                normalized_display_name = re.sub(r'[^a-z0-9]+', '', display_name.lower())
+                for member in (roster_members or []):
+                    m_name = member.get('name', '')
+                    if m_name:
+                        normalized_m_name = re.sub(r'[^a-z0-9]+', '', m_name.lower())
+                        
+                        if (normalized_display_name == normalized_m_name or 
+                            (len(normalized_display_name) > 5 and normalized_display_name in normalized_m_name) or
+                            (len(normalized_m_name) > 5 and normalized_m_name in normalized_display_name)):
+                            match_found = True
+                        else:
+                            match_found = False
+                            
+                        if match_found:
+                            # Match found! Use roster email for grouping
+                            roster_email_for_grouping = member.get('email')
+                            is_verified_roster_member = True
+                            identity_source = 'matched_by_name'
+                            break
 
-            if email:
-                # Keep per-email attribution from Drive metadata so real contributors
-                # remain visible even when they are outside the class roster.
-                key = email
-                name = display_name or (email.split('@')[0] if '@' in email else email)
-                contributor_email = email
+            # Key for grouping is the roster email if matched, otherwise the original email
+            key = roster_email_for_grouping or original_drive_email
+            
+            if key:
+                name = display_name or (key.split('@')[0] if '@' in key else key)
+                # DISPLAY EMAIL should be the original one from Drive history if available
+                contributor_email = original_drive_email or key
                 verified = is_verified_roster_member
             else:
                 display_key = self._normalize_identity_token(display_name)
                 key = f'unverified:{display_key}' if display_key else 'unverified'
-                name = display_name or 'Unverified Contributor'
+                name = display_name or 'Anonymous Contributor'
                 contributor_email = None
                 verified = False
 
+            # If matched to roster, we might want to use the roster name but keep the drive email
+            # However, if we group by roster email, we must ensure 'drive_email' is preserved.
+            if identity_source == 'matched_by_name' and is_verified_roster_member:
+                # We matched "Mark Christian" to "Mark Christian Garing"
+                # Let's use the roster email as the key to group them,
+                # but keep the drive_email for the specific record if it's the only one.
+                pass
+
             if key not in grouped:
                 grouped[key] = {
+                    'id': key,
                     'name': name,
                     'email': contributor_email,
                     'verified': verified,
@@ -693,25 +732,13 @@ class DriveService:
                     'revisionCount': 0,
                     'timestamps': []
                 }
+            elif original_drive_email and not grouped[key].get('email'):
+                grouped[key]['email'] = original_drive_email
 
             grouped[key]['revisionCount'] += 1
             grouped[key]['timestamps'].append(ts)
 
-        # Ensure roster members appear in output even when no revisions are detected.
-        for member in (roster_members or []):
-            member_email = str((member or {}).get('email') or '').strip().lower()
-            member_name = str((member or {}).get('name') or '').strip()
-            if not member_email:
-                continue
-            if member_email not in grouped:
-                grouped[member_email] = {
-                    'name': member_name or (member_email.split('@')[0] if '@' in member_email else member_email),
-                    'email': member_email,
-                    'verified': True,
-                    'identitySource': 'class_roster',
-                    'revisionCount': 0,
-                    'timestamps': []
-                }
+        # Note: Roster members with 0 edits are no longer added automatically per user request.
 
         contributors = []
         total_active_minutes = 0.0
@@ -730,97 +757,87 @@ class DriveService:
                 contributors.append(item)
                 continue
 
+            # Group spammy/autosave revisions into realistic sessions (10 minute gap rule)
             sessions = []
-            session_start = times[0]
-            session_end = times[0]
-            session_revision_count = 1
+            
+            # Simple direct loop over native drive history
+            if times:
+                # Create active blocks based on a 30-minute inactivity threshold
+                active_blocks = []
+                current_block = {
+                    'start': times[0],
+                    'end': times[0],
+                    'revisionCount': 1
+                }
+                
+                for idx in range(1, len(times)):
+                    ts = times[idx]
+                    gap_minutes = (ts - current_block['end']).total_seconds() / 60.0
+                    
+                    if gap_minutes <= window_size:
+                        current_block['end'] = ts
+                        current_block['revisionCount'] += 1
+                    else:
+                        # Finalize the active block
+                        span = (current_block['end'] - current_block['start']).total_seconds() / 60.0
+                        # Real Minutes = Duration of work + 1 minute starting buffer
+                        current_block['minutes'] = max(1.0, span + 1.0)
+                        active_blocks.append(current_block)
+                        current_block = {
+                            'start': ts,
+                            'end': ts,
+                            'revisionCount': 1
+                        }
+                
+                # Finalize last block
+                span = (current_block['end'] - current_block['start']).total_seconds() / 60.0
+                current_block['minutes'] = max(1.0, span + 1.0)
+                active_blocks.append(current_block)
+                
+                # Now group these active blocks into Daily Sessions for the 'sessionCount'
+                daily_sessions = {}
+                for b in active_blocks:
+                    day_key = b['start'].date()
+                    if day_key not in daily_sessions:
+                        daily_sessions[day_key] = {
+                            'start': b['start'],
+                            'end': b['end'],
+                            'revisionCount': b['revisionCount'],
+                            'minutes': b['minutes']
+                        }
+                    else:
+                        daily_sessions[day_key]['end'] = max(daily_sessions[day_key]['end'], b['end'])
+                        daily_sessions[day_key]['revisionCount'] += b['revisionCount']
+                        daily_sessions[day_key]['minutes'] += b['minutes']
+                
+                # Override sessions with daily aggregated versions
+                sessions = sorted(daily_sessions.values(), key=lambda x: x['start'])
+                
 
-            for ts in times[1:]:
-                gap_minutes = (ts - session_end).total_seconds() / 60.0
-                if gap_minutes <= float(session_window_minutes):
-                    session_end = ts
-                    session_revision_count += 1
-                else:
-                    duration = (session_end - session_start).total_seconds() / 60.0
-                    if session_revision_count == 1:
-                        duration = float(single_revision_default_minutes)
-                    duration = max(duration, 0.0)
-                    sessions.append({
-                        'start': session_start,
-                        'end': session_end,
-                        'minutes': duration,
-                        'revisionCount': session_revision_count
-                    })
-                    session_start = ts
-                    session_end = ts
-                    session_revision_count = 1
+                        
 
-            duration = (session_end - session_start).total_seconds() / 60.0
-            if session_revision_count == 1:
-                duration = float(single_revision_default_minutes)
-            duration = max(duration, 0.0)
-            sessions.append({
-                'start': session_start,
-                'end': session_end,
-                'minutes': duration,
-                'revisionCount': session_revision_count
-            })
 
-            active_minutes = float(sum(s['minutes'] for s in sessions))
-            rush_minutes = 0.0
-            if deadline_dt and rush_window_start:
-                rush_minutes = float(sum(
-                    s['minutes']
-                    for s in sessions
-                    if s['end'] >= rush_window_start and s['end'] <= deadline_dt
-                ))
-
-            item['activeEditingMinutes'] = round(active_minutes, 2)
-            item['sessionCount'] = len(sessions)
-            item['points'] = round(active_minutes, 2)
-            item['lastEditTime'] = sessions[-1]['end'].isoformat() + 'Z' if sessions else None
-            item['heuristics'] = []
-            item['isRealContributor'] = bool(item.get('verified')) and active_minutes > 0
-
-            if active_minutes <= 0 and int(item.get('revisionCount') or 0) == 0:
-                item['workStatus'] = 'No Work Detected'
-                item['heuristics'].append('No Work Detected')
-            elif active_minutes > 0 and float(item.get('contributionPercent') or 0) >= 40:
-                item['workStatus'] = 'Primary Worker'
-            elif active_minutes > 0 and float(item.get('contributionPercent') or 0) >= 10:
-                item['workStatus'] = 'Contributing'
-            elif active_minutes > 0:
-                item['workStatus'] = 'Low Contribution'
-            else:
-                item['workStatus'] = 'Unverified Activity'
-
-            # Loophole fix heuristics requested in specification.
-            if int(item['revisionCount']) > 50 and active_minutes < 10:
-                item['heuristics'].append('Micro-Edit Spammer')
-            if active_minutes > 0 and (rush_minutes / active_minutes) >= 0.8:
-                item['heuristics'].append('Last-Minute Rush')
-
-            total_active_minutes += active_minutes
-            total_rush_minutes += rush_minutes
+            # Simplified contributor stats (metrics removed as requested)
+            item['date'] = sessions[-1]['end'].isoformat() + 'Z' if sessions else None
+            item['isRealContributor'] = bool(item.get('verified')) and len(sessions) > 0
+            
             contributors.append(item)
 
-        if total_active_minutes <= 0:
-            total_active_minutes = 1.0
-
+        # Strip all metrics as requested
         for item in contributors:
-            item['contributionPercent'] = round((float(item['activeEditingMinutes']) / total_active_minutes) * 100, 2)
+            item.pop('activeEditingMinutes', None)
+            item.pop('sessionCount', None)
+            item.pop('contributionPercent', None)
+            item.pop('workStatus', None)
+            item.pop('heuristics', None)
+            item.pop('points', None)
+            item.pop('revisionCount', None)
+            item.pop('sessions', None)
 
-            # Finalize deterministic work status after percentage is available.
-            if float(item.get('activeEditingMinutes') or 0) <= 0 and int(item.get('revisionCount') or 0) == 0:
-                item['workStatus'] = 'No Work Detected'
-            elif float(item.get('contributionPercent') or 0) >= 40:
-                item['workStatus'] = 'Primary Worker'
-            elif float(item.get('contributionPercent') or 0) >= 10:
-                item['workStatus'] = 'Contributing'
-            elif float(item.get('activeEditingMinutes') or 0) > 0:
-                item['workStatus'] = 'Low Contribution'
-
-        contributors.sort(key=lambda c: (float(c.get('contributionPercent') or 0), int(c.get('revisionCount') or 0)), reverse=True)
+        contributors.sort(key=lambda c: c.get('name', ''), reverse=False)
+        
+        # Apply AI evaluation (now a no-op)
+        contributors = [self._evaluate_contributor_with_ai(contributor) for contributor in contributors]
 
         unverified_minutes = float(sum(
             float(c.get('activeEditingMinutes') or 0)
@@ -829,14 +846,131 @@ class DriveService:
         ))
         unverified_ratio = (unverified_minutes / total_active_minutes) if total_active_minutes > 0 else 0.0
 
-        return contributors, {
-            'mode': 'session_active_minutes',
-            'sessionWindowMinutes': int(session_window_minutes),
-            'singleRevisionDefaultMinutes': int(single_revision_default_minutes),
-            'totalActiveEditingMinutes': round(total_active_minutes, 2),
-            'totalLastMinuteMinutes': round(total_rush_minutes, 2),
-            'unverifiedMinutes': round(unverified_minutes, 2),
-            'unverifiedRatio': round(unverified_ratio, 4),
+        # Build Global Logs (Daily/Session History)
+        all_sessions = []
+        for key, item in grouped.items():
+            for s in item.get('sessions', []):
+                all_sessions.append({
+                    'contributor': key,
+                    'start': s['start'],
+                    'end': s['end'],
+                    'minutes': s['minutes'],
+                    'revisionCount': s['revisionCount']
+                })
+        
+        all_sessions.sort(key=lambda x: x['start'])
+        
+        global_logs = []
+        if all_sessions:
+            current_log = {
+                'start': all_sessions[0]['start'],
+                'end': all_sessions[0]['end'],
+                'contributors': {all_sessions[0]['contributor']: {
+                    'minutes': all_sessions[0]['minutes'],
+                    'revisions': all_sessions[0]['revisionCount']
+                }},
+                'totalMinutes': all_sessions[0]['minutes'],
+                'totalRevisions': all_sessions[0]['revisionCount']
+            }
+            
+            for j in range(1, len(all_sessions)):
+                s = all_sessions[j]
+                # Group logs by day instead of gap
+                is_same_day = s['start'].date() == current_log['start'].date()
+                
+                if is_same_day:
+                    current_log['end'] = max(current_log['end'], s['end'])
+                    c_key = s['contributor']
+                    if c_key not in current_log['contributors']:
+                        current_log['contributors'][c_key] = {'minutes': 0.0, 'revisions': 0}
+                    current_log['contributors'][c_key]['minutes'] += s['minutes']
+                    current_log['contributors'][c_key]['revisions'] += s['revisionCount']
+                    current_log['totalMinutes'] += s['minutes']
+                    current_log['totalRevisions'] = current_log.get('totalRevisions', 0) + s['revisionCount']
+                else:
+                    global_logs.append(current_log)
+                    current_log = {
+                        'start': s['start'],
+                        'end': s['end'],
+                        'contributors': {s['contributor']: {
+                            'minutes': s['minutes'],
+                            'revisions': s['revisionCount']
+                        }},
+                        'totalMinutes': s['minutes'],
+                        'totalRevisions': s['revisionCount']
+                    }
+            global_logs.append(current_log)
+
+        formatted_logs = []
+        current_app.logger.info(f"Generating {len(global_logs)} history logs for document")
+        for idx, gl in enumerate(global_logs):
+            contrib_stats = {}
+            for k, v in gl['contributors'].items():
+                c_obj = grouped.get(k, {})
+                c_key = c_obj.get('email') or c_obj.get('name') or k
+                contrib_stats[c_key] = {
+                    'minutes': round(v['minutes'], 2),
+                    'revisions': v['revisions']
+                }
+
+            formatted_logs.append({
+                'id': f"log_{idx}",
+                'date': gl['start'].strftime('%Y-%m-%d %H:%M'),
+                'label': f"{gl['start'].strftime('%b %d, %Y')} Session",
+                'duration': round(gl['totalMinutes'], 2),
+                'totalRevisions': gl.get('totalRevisions', 0),
+                'contributors': contrib_stats
+            })
+        
+        formatted_logs.sort(key=lambda x: x['date'], reverse=True)
+
+        # Final contributors list - Combine History and Metadata insights
+        final_contributors = []
+        
+        # 1. Add everyone from the history
+        history_keys = set()
+        for item_g in grouped.values():
+            if 'sessions' in item_g:
+                del item_g['sessions']
+            
+            if int(item_g.get('revisionCount') or 0) > 0:
+                final_contributors.append(item_g)
+                history_keys.add(item_g.get('id'))
+
+        # 2. Add people from document metadata/permissions who didn't show up in history
+        # (e.g. the Author or other stakeholders mentioned in the file)
+        metadata_contributors = []
+        if isinstance(document_metadata, dict) and document_metadata.get('contributors'):
+            for mc in document_metadata['contributors']:
+                mc_email = str(mc.get('email') or '').lower()
+                mc_name = mc.get('name')
+                mc_id = mc_email or mc_name
+                
+                if mc_id and mc_id not in history_keys:
+                    metadata_contributors.append({
+                        'id': f"meta_{mc_id}",
+                        'name': mc_name,
+                        'email': mc_email,
+                        'verified': True,
+                        'identitySource': 'document_metadata',
+                        'revisionCount': 0,
+                        'sessionCount': 0,
+                        'activeEditingMinutes': 0.0,
+                        'contributionPercent': 0.0,
+                        'workStatus': 'Historical/Metadata Contributor',
+                        'isRealContributor': False,
+                        'heuristics': ['Found in Metadata', 'No recent history detected']
+                    })
+                    history_keys.add(mc_id)
+
+        final_contributors.extend(metadata_contributors)
+
+        # Sort final list by contribution percent, then revisions, then name
+        final_contributors.sort(key=lambda c: (float(c.get('contributionPercent') or 0), int(c.get('revisionCount') or 0)), reverse=True)
+
+        return final_contributors, {
+            'mode': 'document_metadata_only',
+            'historyLogs': [] # Removed logs as requested
         }
 
     def _apply_ai_effort_labels(self, contributors):
@@ -868,7 +1002,7 @@ class DriveService:
 
             prompt = (
                 'Given collaborative metadata metrics, label each person with one effortLabel '
-                '(Primary Worker, Contributing, Low Contribution, No Work Detected) and brief reason. '
+                '(High Contribution, Moderate Contribution, Low Contribution, No Work Detected) and brief reason. '
                 'Do not invent contributors. Keep output strictly JSON array with fields: '
                 '[{"name":"...","email":"...","effortLabel":"...","reason":"..."}].\\n\\n'
                 f'Contributors: {json.dumps(compact, ensure_ascii=True)}'
@@ -923,7 +1057,7 @@ class DriveService:
                 'overallInsight': 'No contributor sessions could be computed from revision metadata.',
                 'timeline': f'Revision history checked across {total_revisions} revisions.',
                 'effortDistribution': 'No active editing sessions were detected.',
-                'collaborationQuality': 'Insufficient metadata to assess collaboration quality.',
+                'aiEvaluationQuality': 'Insufficient metadata to assess AI analysis & evaluation.',
                 'identifiedRoles': [],
                 'source': 'deterministic'
             }
@@ -934,7 +1068,7 @@ class DriveService:
                 'overallInsight': 'No measurable active editing sessions were attributed to roster contributors.',
                 'timeline': f'Revision history analyzed across {total_revisions} revisions using {session_window}-minute session clustering.',
                 'effortDistribution': 'All listed contributors are currently marked as No Work Detected.',
-                'collaborationQuality': 'Insufficient active editing evidence for fair attribution.',
+                'aiEvaluationQuality': 'Insufficient active editing evidence for fair attribution.',
                 'identifiedRoles': [],
                 'source': 'deterministic'
             }
@@ -949,26 +1083,13 @@ class DriveService:
         elif top_percent >= 50:
             quality = 'One contributor led the effort with visible supporting sessions from others.'
         else:
-            quality = 'Session activity suggests a relatively balanced collaborative effort.'
+            quality = 'Session activity suggests a relatively balanced AI analysis & evaluation.'
 
         return {
-            'overallInsight': (
-                f"{top.get('name', 'A contributor')} led session-based effort at {round(top_percent, 2)}%. "
-                f"Total measured active editing time is {round(total_minutes, 2)} minutes."
-            ),
-            'timeline': f'Revision history analyzed across {total_revisions} revisions using {session_window}-minute session clustering.',
-            'effortDistribution': (
-                f"Top contributor: {top.get('name', 'Unknown')} "
-                f"({round(float(top.get('activeEditingMinutes') or 0), 2)} minutes). "
-                f"No-work contributors flagged: {non_worker_count}."
-            ),
-            'collaborationQuality': quality,
-            'identifiedRoles': [
-                {'name': top.get('name', 'Unknown'), 'role': 'Primary Contributor'}
-            ] + [
-                {'name': c.get('name', 'Unknown'), 'role': 'Supporting Contributor'}
-                for c in contributors[1:3]
-            ],
+            'overallInsight': 'Revision history indicates activity from the following contributors.',
+            'timeline': f'Revision history analyzed across {total_revisions} revisions.',
+            'effortDistribution': 'Contribution details summarized based on document revision metadata.',
+            'aiEvaluationQuality': 'Analysis completed based on available revision history.',
             'source': 'deterministic'
         }
 
@@ -1220,16 +1341,20 @@ class DriveService:
 
         return contributors, meta
 
+    def _evaluate_contributor_with_ai(self, contributor):
+        """AI-powered evaluation deactivated as per request."""
+        return contributor
+
     def _build_summary_feedback(self, contributors, total_revisions, scoring_meta=None, total_words_added=None, total_words_deleted=None):
         """Create a deterministic collaboration summary for the report footer."""
         scoring_meta = scoring_meta or {}
         contributor_count = len(contributors or [])
         if scoring_meta.get('noMeasuredEdits'):
             return {
-                'overallInsight': 'No measurable word additions or deletions were found, so the report cannot assign participation fairly.',
-                'timeline': f'Revision history was checked across {total_revisions} revisions, but no edit deltas were confirmed.',
-                'effortDistribution': 'No confirmed edit deltas were available for attribution.',
-                'collaborationQuality': 'Unable to assess collaboration fairly without measurable edits.',
+                'overallInsight': 'No measurable text edits were detected, so individual effort cannot be estimated reliably.',
+                'timeline': f'{total_revisions} revisions were checked, but no measurable edit changes were confirmed.',
+                'effortDistribution': 'There is not enough measurable evidence to distribute contribution percentages.',
+                'collaborationQuality': 'Collaboration quality cannot be judged fairly from the available revision signals.',
                 'identifiedRoles': [],
                 'source': 'deterministic'
             }
@@ -1248,9 +1373,9 @@ class DriveService:
         if contributor_count == 0:
             return {
                 'overallInsight': 'No contributor activity could be summarized from the available revision history.',
-                'timeline': 'No revision timeline available.',
-                'effortDistribution': 'No contribution distribution available.',
-                'collaborationQuality': 'Insufficient data to assess collaboration quality.',
+                'timeline': 'No usable revision timeline was found for this file.',
+                'effortDistribution': 'No contribution breakdown could be generated.',
+                'collaborationQuality': 'Insufficient evidence to evaluate collaboration quality.',
                 'identifiedRoles': [],
                 'source': 'deterministic'
             }
@@ -1266,344 +1391,82 @@ class DriveService:
             recommendation = 'Maintain the current collaboration rhythm and document shared edits clearly.'
 
         summary = {
-            'overallInsight': (
-                f"{top_contributor.get('name', 'A contributor') if top_contributor else 'The team'} "
-                f"contributed most of the revisions across {total_revisions} revisions. "
-                f"Detected delta totals: +{int(total_words_added)} words and -{int(total_words_deleted)} words."
-            ),
-            'timeline': f"Revision history analyzed across {total_revisions} revisions for {contributor_count} contributors.",
-            'effortDistribution': (
-                f"Top contributor: {top_contributor.get('name', 'Unknown') if top_contributor else 'Unknown'} "
-                f"at {round(top_percent, 2)}% of the measured contribution."
-            ),
-            'collaborationQuality': quality,
-            'identifiedRoles': [
-                {'name': top_contributor.get('name', 'Unknown'), 'role': 'Primary Author'}
-            ] + [
-                {'name': contributor.get('name', 'Unknown'), 'role': 'Supporting Contributor'}
-                for contributor in (contributors or [])[1:3]
-            ],
+            'overallInsight': f"Work detected across {total_revisions} revisions.",
+            'timeline': f"Revision history analyzed for {contributor_count} contributors.",
+            'effortDistribution': "Document contribution summarized based on metadata.",
+            'aiEvaluationQuality': "Evaluation completed based on revision signals.",
             'source': 'deterministic'
         }
 
-        if scoring_meta.get('scoringMode') == 'word_and_deletion':
-            summary['overallInsight'] += ' The report is based on measured word additions and deletions.'
-
         return summary
 
+    def _ensure_all_contributors_in_identified_roles(self, analysis, contributors):
+        """Ensure summary roles include every contributor in report order."""
+        analysis = analysis if isinstance(analysis, dict) else {}
+
+        existing_roles = {}
+        for role_item in (analysis.get('identifiedRoles') or []):
+            if not isinstance(role_item, dict):
+                continue
+            role_name = str(role_item.get('role') or '').strip()
+            contributor_name = str(role_item.get('name') or '').strip().lower()
+            contributor_email = str(role_item.get('email') or '').strip().lower()
+            if role_name and contributor_name:
+                existing_roles[contributor_name] = role_name
+            if role_name and contributor_email:
+                existing_roles[contributor_email] = role_name
+
+        resolved_roles = []
+        for index, contributor in enumerate(contributors or []):
+            name = str(contributor.get('name') or 'Unknown').strip() or 'Unknown'
+            email = str(contributor.get('email') or '').strip().lower()
+
+            role = existing_roles.get(email) or existing_roles.get(name.lower())
+            if not role:
+                role = str(contributor.get('aiEffortLabel') or '').strip()
+            if not role:
+                role = str(contributor.get('workStatus') or '').strip()
+            if not role:
+                role = 'Primary Contributor' if index == 0 else 'Supporting Contributor'
+
+            resolved_roles.append({
+                'name': name,
+                'role': role
+            })
+
+        analysis['identifiedRoles'] = resolved_roles
+        return analysis
+
     def _score_with_gemini(self, contributors):
-        """Integrate Gemini AI scoring with word-based metrics for collaborative effort reporting."""
-        if not contributors or not genai:
-            return contributors
-
-        try:
-            api_key = current_app.config.get('GEMINI_API_KEY')
-            if not api_key:
-                return contributors
-
-            genai.configure(api_key=api_key)
-
-            prompt = (
-                "You are evaluating collaborative writing effort based on revision metrics. "
-                "Given contributor metrics (words written, words deleted, revision count), "
-                "assign each contributor a fairScore from 0-100 representing their fair contribution %. "
-                "Consider: 1) Words written/deleted show direct contribution, 2) Revision count shows engagement, "
-                "3) Total effort = wordsWritten + (0.5 * wordsDeleted). "
-                "Provide constructive rationale. Respond ONLY as JSON array: "
-                "[{\"name\":\"...\",\"fairScore\":number,\"rationale\":\"...\"}].\n\n"
-                f"Contributors: {json.dumps(contributors, ensure_ascii=True)}"
-            )
-
-            response, _model_used = self._generate_with_gemini(
-                prompt,
-                timeout_seconds=10
-            )
-            raw_text = (response.text or '').strip()
-            if not raw_text:
-                return contributors
-
-            if raw_text.startswith('```'):
-                raw_text = raw_text.strip('`')
-                if raw_text.lower().startswith('json'):
-                    raw_text = raw_text[4:].strip()
-
-            parsed = json.loads(raw_text)
-            if not isinstance(parsed, list):
-                return contributors
-
-            # Map AI scores by contributor name (case-insensitive)
-            by_name = {str(item.get('name', '')).strip().lower(): item for item in parsed if isinstance(item, dict)}
-            
-            # Apply AI scores only for contributors with measurable text deltas.
-            # This prevents redistributing credit to users with zero detected edits.
-            total_ai_points = 0.0
-            for contributor in contributors:
-                has_measured_delta = (
-                    float(contributor.get('wordsWritten') or 0) > 0 or
-                    float(contributor.get('wordsDeleted') or 0) > 0
-                )
-                if not has_measured_delta:
-                    continue
-
-                lookup = by_name.get(str(contributor.get('name', '')).strip().lower())
-                if not lookup:
-                    continue
-                
-                # Get the AI fair score (0-100)
-                fair_score_val = lookup.get('fairScore')
-                try:
-                    ai_fair_score = float(fair_score_val)  # This is already a percentage (0-100)
-                    contributor['aiScore'] = round(ai_fair_score, 2)
-                except Exception:
-                    ai_fair_score = None
-                
-                # Get rationale
-                rationale = str(lookup.get('rationale') or '').strip()
-                if rationale:
-                    contributor['aiRationale'] = rationale
-                
-                # Blend word-based contribution (current points as %) with AI fair score
-                # AI score is a direct percentage contribution recommendation
-                if ai_fair_score is not None:
-                    word_based_percent = contributor.get('contributionPercent', 0)
-                    # Blend: 70% word-based metrics, 30% AI validation/adjustment
-                    blended_percent = (word_based_percent * 0.7) + (ai_fair_score * 0.3)
-                    contributor['aiAdjustedPercent'] = round(blended_percent, 2)
-                    total_ai_points += blended_percent
-            
-            # Normalize final percentages across ALL contributors so AI does not
-            # collapse non-adjusted contributors to 0%.
-            final_points = 0.0
-            if total_ai_points > 0:
-                for contributor in contributors:
-                    if 'aiAdjustedPercent' in contributor:
-                        candidate = float(contributor['aiAdjustedPercent'])
-                    else:
-                        candidate = float(contributor.get('contributionPercent') or 0)
-                    contributor['contributionPercent'] = round(candidate, 2)
-                    final_points += candidate
-
-                if final_points > 0:
-                    for contributor in contributors:
-                        normalized = (float(contributor.get('contributionPercent') or 0) / final_points) * 100
-                        contributor['contributionPercent'] = round(normalized, 2)
-                        contributor['points'] = round(contributor['contributionPercent'], 2)
-            
-            return contributors
-            
-        except Exception as e:
-            err_text = str(e).lower()
-            if 'quota' in err_text or 'rate' in err_text or '429' in err_text:
-                current_app.logger.warning("Gemini quota/rate limit reached. Using word-based scoring only.")
-            else:
-                current_app.logger.warning(f"Gemini scoring unavailable: {e}. Using word-based scoring.")
-            return contributors
+        """AI scoring deactivated as per request."""
+        return contributors
 
     def _apply_estimated_word_metrics(self, contributors, total_revisions, expected_word_count):
-        """Estimate word metrics from revision share when revision text snapshots are unavailable."""
-        if not contributors or not total_revisions:
-            return contributors, False
-
-        try:
-            baseline = int(expected_word_count) if expected_word_count is not None else None
-        except Exception:
-            baseline = None
-
-        if not baseline or baseline <= 0:
-            return contributors, False
-
-        for contributor in contributors:
-            current_written = int(contributor.get('wordsWritten') or 0)
-            current_deleted = int(contributor.get('wordsDeleted') or 0)
-            if current_written > 0 or current_deleted > 0:
-                continue
-
-            share = float(contributor.get('revisionCount', 0)) / float(total_revisions)
-            estimated_written = max(1, int(round(baseline * share)))
-            estimated_deleted = max(1, int(round(estimated_written * 0.12)))
-            contributor['wordsWritten'] = estimated_written
-            contributor['wordsDeleted'] = estimated_deleted
-
-        return contributors, True
+        """Word metric estimation deactivated."""
+        return contributors, False
 
     def _aggregate_revision_count_contributors(self, revisions, expected_word_count=None):
-        """Fast fallback contributor aggregation based on revision counts only."""
+        """Simplified identity-only contributor aggregation."""
         if not revisions:
             return []
 
-        total_revisions = len(revisions)
         stats = {}
-
         for rev in revisions:
             key, name, email = self._contributor_identity(rev)
             if key not in stats:
                 stats[key] = {
                     'name': name,
                     'email': email,
-                    'revisionCount': 0,
-                    'wordsWritten': 0,
-                    'wordsDeleted': 0,
-                    'verified': email.endswith('@gmail.com') if email else False,
-                    'points': 0.0
+                    'verified': email.endswith('@gmail.com') if email else False
                 }
-            stats[key]['revisionCount'] += 1
-
-        contributors = []
-        for item in stats.values():
-            percent = (item['revisionCount'] / total_revisions) * 100 if total_revisions else 0
-            item['contributionPercent'] = round(percent, 2)
-            item['points'] = round(float(item['revisionCount']), 2)
-            contributors.append(item)
-
-        contributors.sort(key=lambda x: (x['contributionPercent'], x['revisionCount']), reverse=True)
-        return contributors
+        return list(stats.values())
 
     def _analyze_revision_history_with_gemini(self, revisions, contributors, nlp_context=None):
-        """Analyze full revision history with Gemini to extract collaboration insights"""
-        if not revisions or not genai or not contributors:
-            return None
-
-        try:
-            api_key = current_app.config.get('GEMINI_API_KEY')
-            if not api_key:
-                return None
-
-            genai.configure(api_key=api_key)
-
-            # Prepare compact revision history summary for analysis.
-            revision_summary = []
-            for rev in revisions[:40]:  # tighter bound to reduce output truncation risk
-                mod_time = rev.get('modifiedTime', '')
-                last_user = rev.get('lastModifyingUser', {})
-                user_name = last_user.get('displayName', 'Unknown')
-                revision_summary.append({
-                    'timestamp': mod_time,
-                    'editor': user_name,
-                    'revisionId': rev.get('id', 'Unknown')
-                })
-
-            compact_contributors = [
-                {
-                    'name': c.get('name'),
-                    'email': c.get('email'),
-                    'revisionCount': c.get('revisionCount', 0),
-                    'sessionCount': c.get('sessionCount', 0),
-                    'activeEditingMinutes': c.get('activeEditingMinutes', 0),
-                    'contributionPercent': c.get('contributionPercent', 0),
-                    'workStatus': c.get('workStatus')
-                }
-                for c in (contributors or [])
-            ]
-
-            prompt = (
-                "You are analyzing collaborative document revision history. "
-                "Analyze the following revision patterns and provide insights:\n\n"
-                "1. Collaboration timeline and patterns (when people worked)\n"
-                "2. Effort distribution (who contributed most)\n"
-                "3. Collaboration quality (sync/async, back-and-forth)\n"
-                "4. Identified roles (primary author, editors, reviewers)\n"
-                "5. Recommendations for improvement\n\n"
-                "Revision History (truncated):\n"
-                f"{json.dumps(revision_summary, ensure_ascii=True)}\n\n"
-                "Contributor Metrics:\n"
-                f"{json.dumps(compact_contributors, ensure_ascii=True)}\n\n"
-                "NLP Snapshot (latest revision text):\n"
-                f"{json.dumps(nlp_context or {}, ensure_ascii=True)}\n\n"
-                "Respond ONLY as JSON with structure:\n"
-                "{\n"
-                '  "collaborationScore": number (0-100),\n'
-                '  "timeline": "analysis of when work happened",\n'
-                '  "effortDistribution": "how effort is distributed",\n'
-                '  "collaborationQuality": "assessment of collaboration style",\n'
-                '  "identifiedRoles": [{"name": "...", "role": "..."}],\n'
-                '  "effortLabels": [{"name":"...","email":"...","effortLabel":"Primary Worker|Contributing|Low Contribution|No Work Detected","reason":"..."}],\n'
-                '  "recommendations": ["...", "..."],\n'
-                '  "overallInsight": "one-sentence summary"\n'
-                "}"
-            )
-
-            def _extract_response_text(resp):
-                text = str(getattr(resp, 'text', '') or '').strip()
-                if text:
-                    return text
-                try:
-                    candidates = getattr(resp, 'candidates', None) or []
-                    for cand in candidates:
-                        content = getattr(cand, 'content', None)
-                        parts = getattr(content, 'parts', None) or []
-                        for part in parts:
-                            part_text = str(getattr(part, 'text', '') or '').strip()
-                            if part_text:
-                                return part_text
-                except Exception:
-                    pass
-                return ''
-
-            def _ask(prompt_text):
-                def _parse_json_candidate(raw_text):
-                    parsed = self._extract_ai_json(raw_text)
-                    if isinstance(parsed, dict):
-                        return parsed
-
-                    # Common cleanup for near-JSON responses.
-                    candidate = str(raw_text or '')
-                    candidate = candidate.replace('\u201c', '"').replace('\u201d', '"').replace('\u2019', "'")
-                    candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
-
-                    start = candidate.find('{')
-                    end = candidate.rfind('}')
-                    if start >= 0 and end > start:
-                        candidate = candidate[start:end + 1]
-
-                    try:
-                        parsed = json.loads(candidate)
-                        return parsed if isinstance(parsed, dict) else None
-                    except Exception:
-                        return None
-
-                response, _model_used = self._generate_with_gemini(
-                    prompt_text,
-                    generation_config={
-                        'temperature': 0,
-                        'response_mime_type': 'application/json',
-                        'max_output_tokens': 1400
-                    },
-                    timeout_seconds=18
-                )
-                raw_text = _extract_response_text(response)
-                if not raw_text:
-                    raise Exception('Gemini returned empty response text')
-                parsed = _parse_json_candidate(raw_text)
-                if not isinstance(parsed, dict):
-                    preview = raw_text[:220].replace('\n', ' ')
-                    raise Exception(f'Gemini returned non-JSON content: {preview}')
-                return parsed
-
-            try:
-                analysis = _ask(prompt)
-            except Exception as first_error:
-                # One strict retry with a shorter prompt to avoid token/cutoff issues.
-                retry_prompt = (
-                    "Return ONLY a single valid JSON object (no markdown, no prose). "
-                    "Keep each text field short (<=160 chars) and single-line. "
-                    "Include effortLabels for all contributors with fields: "
-                    "name,email,effortLabel,reason. "
-                    f"Revisions={json.dumps(revision_summary, ensure_ascii=True)}; "
-                    f"Contributors={json.dumps(compact_contributors, ensure_ascii=True)}"
-                )
-                analysis = _ask(retry_prompt)
-                if not isinstance(analysis, dict):
-                    raise Exception(f'Gemini returned invalid analysis payload after retry. First error: {first_error}')
-
-            if not isinstance(analysis.get('effortLabels'), list):
-                analysis['effortLabels'] = []
-            return analysis
-
-        except Exception as e:
-            raise Exception(f"Revision history analysis failed: {e}")
+        """Collaboration history analysis deactivated as per request."""
+        return None
 
     def fetch_revisions(self, file_id, user_credentials_json=None, max_pages=50):
-        """Fetch Google Drive revisions via paginated metadata-only endpoint."""
+        """Fetch Google Drive revisions via paginated metadata-only endpoint with enhanced accuracy."""
         try:
             service = self._get_drive_service(user_credentials_json)
             if not service:
@@ -1614,30 +1477,84 @@ class DriveService:
             pages_fetched = 0
             partial_data = False
             partial_reason = None
+            retry_count = 0
+            max_retries = 3
 
             while True:
                 if pages_fetched >= int(max_pages):
                     partial_data = True
                     partial_reason = 'history_truncated_page_limit'
+                    current_app.logger.warning(f"Revision history truncated at page limit {max_pages} for file {file_id}")
                     break
 
                 try:
                     results = service.revisions().list(
                         fileId=file_id,
                         pageToken=next_page_token,
-                        fields='nextPageToken,revisions(id,modifiedTime,lastModifyingUser(emailAddress,displayName))'
+                        fields='nextPageToken,revisions(id,modifiedTime,lastModifyingUser(emailAddress,displayName))',
+                        pageSize=100  # Max page size for efficiency
                     ).execute()
+                    
+                    # Validate and clean revision data
+                    page_revisions = results.get('revisions', []) or []
+                    valid_revisions = []
+                    
+                    for rev in page_revisions:
+                        if not rev.get('id'):
+                            continue
+                        
+                        # Validate timestamp
+                        mod_time = rev.get('modifiedTime')
+                        if not mod_time:
+                            continue
+                        
+                        # Validate user data
+                        user = rev.get('lastModifyingUser') or {}
+                        if not user.get('displayName') and not user.get('emailAddress'):
+                            # Still include anonymous revisions but mark them
+                            rev['_isAnonymous'] = True
+                        
+                        valid_revisions.append(rev)
+                    
+                    revisions.extend(valid_revisions)
+                    pages_fetched += 1
+                    retry_count = 0  # Reset retry count on success
+                    
+                    current_app.logger.info(f"Fetched page {pages_fetched}: {len(valid_revisions)} revisions for file {file_id}")
+                    
                 except HttpError as page_error:
                     status = getattr(getattr(page_error, 'resp', None), 'status', None)
                     err_text = str(page_error).lower()
+                    
                     if status == 403 and ('rate' in err_text or 'quota' in err_text):
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            wait_time = min(2 ** retry_count, 10)  # Exponential backoff, max 10 seconds
+                            current_app.logger.warning(f"Rate limit hit, retrying in {wait_time}s (attempt {retry_count}/{max_retries})")
+                            import time
+                            time.sleep(wait_time)
+                            continue
+                        
                         partial_data = True
                         partial_reason = 'rate_limit_exceeded'
+                        current_app.logger.warning(f"Rate limit exceeded after {max_retries} retries for file {file_id}")
                         break
-                    raise
+                    elif status == 429:
+                        if retry_count < max_retries:
+                            retry_count += 1
+                            wait_time = min(2 ** retry_count, 15)  # Longer backoff for 429
+                            current_app.logger.warning(f"429 error, retrying in {wait_time}s (attempt {retry_count}/{max_retries})")
+                            import time
+                            time.sleep(wait_time)
+                            continue
+                        
+                        partial_data = True
+                        partial_reason = 'too_many_requests'
+                        break
+                    else:
+                        current_app.logger.error(f"HTTP error fetching revisions: {page_error}")
+                        raise
 
-                revisions.extend(results.get('revisions', []) or [])
-                pages_fetched += 1
                 next_page_token = results.get('nextPageToken')
                 if not next_page_token:
                     break
@@ -1649,7 +1566,21 @@ class DriveService:
                     'pagesFetched': pages_fetched,
                 }, "No revision history found for this document type (revisions are best for Google Docs/Sheets)."
 
-            return revisions, {
+            # Sort revisions by timestamp to ensure chronological order
+            revisions.sort(key=lambda x: x.get('modifiedTime', ''), reverse=True)
+            
+            # Remove duplicates based on revision ID
+            seen_ids = set()
+            unique_revisions = []
+            for rev in revisions:
+                rev_id = rev.get('id')
+                if rev_id and rev_id not in seen_ids:
+                    seen_ids.add(rev_id)
+                    unique_revisions.append(rev)
+            
+            current_app.logger.info(f"Successfully fetched {len(unique_revisions)} unique revisions for file {file_id}")
+
+            return unique_revisions, {
                 'partialData': partial_data,
                 'partialReason': partial_reason,
                 'pagesFetched': pages_fetched,
@@ -1720,9 +1651,12 @@ class DriveService:
             except Exception as e:
                 current_app.logger.warning(f"Could not fetch file metadata: {e}")
 
-        mime_type = str((file_metadata or {}).get('mimeType') or '').strip()
-        if mime_type and mime_type != 'application/vnd.google-apps.document':
-            return None, 'Contribution tracking requires a native Google Doc (application/vnd.google-apps.document).'
+        mime_type = str((file_metadata or {}).get('mimeType') or '').strip().lower()
+        is_google_doc = mime_type == 'application/vnd.google-apps.document'
+        is_docx_on_drive = mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        
+        if mime_type and not (is_google_doc or is_docx_on_drive):
+            return None, f'Contribution tracking requires a Google Doc or Word file on Drive. (Detected: {mime_type})'
 
         # Step 2: Fetch revision history
         revisions, fetch_meta, error = self.fetch_revisions(file_id, user_credentials_json, max_pages=max_revision_pages)
@@ -1851,6 +1785,19 @@ class DriveService:
         except Exception as ai_error:
             current_app.logger.warning(f"AI collaboration analysis unavailable; falling back to deterministic summary: {ai_error}")
             warnings.append('AI labeling unavailable; using deterministic contribution summary')
+
+        revision_analysis = self._ensure_all_contributors_in_identified_roles(
+            revision_analysis or {},
+            contributors
+        )
+
+        max_report_contributors = int(current_app.config.get('COLLAB_MAX_REPORT_CONTRIBUTORS', 6) or 6)
+        max_report_contributors = max(1, max_report_contributors)
+        report_contributors = list(contributors or [])[:max_report_contributors]
+        if len(contributors or []) > max_report_contributors:
+            warnings.append(f'Contributor list limited to top {max_report_contributors} by measured contribution.')
+
+        warnings = list(dict.fromkeys(warnings))
         
         # Discard raw revision data (Data Minimization)
         del revisions
@@ -1865,12 +1812,14 @@ class DriveService:
                 'size': file_metadata.get('size') if file_metadata else 0
             } if file_metadata else {},
             'totalRevisions': total_revisions,
-            'contributors': contributors,
+            'contributors': report_contributors,
             'scoring': {
                 'mode': session_meta.get('mode'),
                 'weights': {
                     'activeEditingMinutes': 1.0
                 },
+                'totalContributorsDetected': len(contributors or []),
+                'contributorsReturned': len(report_contributors),
                 'sessionWindowMinutes': session_meta.get('sessionWindowMinutes', 15),
                 'singleRevisionDefaultMinutes': session_meta.get('singleRevisionDefaultMinutes', 5),
                 'totalActiveEditingMinutes': session_meta.get('totalActiveEditingMinutes', 0),
@@ -1884,7 +1833,8 @@ class DriveService:
                 'aiEffortLabelingApplied': bool(ai_applied),
                 'aiProvider': ai_provider,
                 'aiCollabAnalysisApplied': bool(ai_collab_analysis_applied),
-                'analysisProvider': analysis_provider
+                'analysisProvider': analysis_provider,
+                'historyLogs': session_meta.get('historyLogs', [])
             },
             'flags': warnings,
             'collaborationAnalysis': revision_analysis or {},
@@ -1895,7 +1845,7 @@ class DriveService:
 
     def generate_docx_contribution_report(self, docx_file_path, expected_word_count=None):
         """
-        Generate Collaborative Effort Report using REAL DOCX tracked changes.
+        Generate AI Analysis & Evaluation Report using REAL DOCX tracked changes.
         This analyzes the actual w:ins and w:del elements for accurate contributor metrics.
         No estimation - only real data from document tracking.
         """
@@ -1961,6 +1911,15 @@ class DriveService:
                 total_words_added=total_words_added,
                 total_words_deleted=total_words_deleted
             )
+
+            collaboration_analysis = self._ensure_all_contributors_in_identified_roles(
+                collaboration_analysis,
+                contributors
+            )
+
+            max_report_contributors = int(current_app.config.get('COLLAB_MAX_REPORT_CONTRIBUTORS', 6) or 6)
+            max_report_contributors = max(1, max_report_contributors)
+            report_contributors = list(contributors)[:max_report_contributors]
             
             # Extract file metadata
             file_metadata = {}
@@ -1986,7 +1945,7 @@ class DriveService:
                 'totalTrackedChanges': sum(c['revisionCount'] for c in contributors),
                 'totalWordsAdded': total_words_added,
                 'totalWordsDeleted': total_words_deleted,
-                'contributors': contributors,
+                'contributors': report_contributors,
                 'scoring': {
                     'mode': 'word_and_deletion',
                     'weights': {
@@ -1994,6 +1953,8 @@ class DriveService:
                         'wordsDeleted': 0.5,
                         'aiBlend': 0.3
                     },
+                    'totalContributorsDetected': len(contributors),
+                    'contributorsReturned': len(report_contributors),
                     'expectedWordCount': expected_word_count,
                     'revisionSnapshotsAnalyzed': len(tracked_changes),
                     'biasControlApplied': False,

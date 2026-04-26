@@ -33,6 +33,7 @@ except ImportError:
 from flask import current_app
 from collections import Counter
 import re
+import json
 
 
 class NLPService:
@@ -111,12 +112,21 @@ class NLPService:
             return
             
         try:
-            api_key = current_app.config.get('GEMINI_API_KEY')
+            # Force reload .env to catch changes without restarting
+            from dotenv import load_dotenv
+            import os
+            load_dotenv(override=True)
+            
+            api_key = os.environ.get('GEMINI_API_KEY')
             if api_key:
+                # Update current_app config too
+                if current_app:
+                    current_app.config['GEMINI_API_KEY'] = api_key
+                
                 genai.configure(api_key=api_key)
                 self.gemini_initialized = True
                 if current_app:
-                    current_app.logger.info("Gemini AI initialized successfully")
+                    current_app.logger.info("Gemini AI initialized successfully with reloaded key")
             else:
                 if current_app:
                     current_app.logger.info("Gemini API key not provided - AI features disabled")
@@ -318,11 +328,11 @@ class NLPService:
             
             user_prompt += "\n\nPlease provide a highly structured and detailed evaluation of the document based on the following criteria:"
             user_prompt += "\n1. **Executive Summary**: A concise summary of the project's core idea."
-            user_prompt += "\n2. **Contribution & Task Analysis**: Analyze the roles and contributions of the team members. Evaluate how the tasks are divided, who is doing what, and provide feedback on their workload distribution or collaborative effort."
+            user_prompt += "\n2. **Contribution & Task Analysis**: Analyze the roles and contributions of the team members. Evaluate how the tasks are divided, who is doing what, and provide feedback on their workload distribution or AI Analysis & Evaluation."
             user_prompt += "\n3. **Scope & Viability**: Feedback on the project's realism and technical scope."
             user_prompt += "\n4. **Key Strengths & Improvements**: Actionable feedback for the team to improve."
 
-            model = genai.GenerativeModel('gemini-2.0-flash')
+            model = genai.GenerativeModel('gemini-flash-latest')
             response = model.generate_content(system_instruction + "\n\n" + user_prompt)
             
             if response.text:
@@ -334,6 +344,105 @@ class NLPService:
             if current_app:
                 current_app.logger.error(f"Gemini AI summary failed: {e}")
             return None, str(e)
+
+    def evaluate_with_rubric(self, text, rubric, submission_context=None):
+        """Evaluate document text against a specific rubric using Gemini"""
+        if not self.gemini_initialized:
+            self._initialize_gemini()
+        
+        if not self.gemini_initialized:
+            return None, "Gemini AI not configured"
+        
+        if not rubric or not rubric.get('criteria'):
+            return None, "No rubric criteria provided for evaluation"
+            
+        try:
+            # Construct a structured prompt for the rubric
+            criteria_text = ""
+            for i, crit in enumerate(rubric.get('criteria', [])):
+                criteria_text += f"\nCriterion {i+1}: {crit.get('name')}\nDescription: {crit.get('description')}\nWeight: {crit.get('weight')}%\n"
+
+            # Use custom system instructions if provided, otherwise use default
+            system_instruction = rubric.get('system_instructions')
+            if not system_instruction:
+                system_instruction = (
+                    "You are an elite academic software project evaluator. "
+                    "Your task is to grade the provided document strictly according to the given rubric criteria. "
+                    "CRITICAL INSTRUCTIONS:\n"
+                    "1. You MUST provide an evaluation for EVERY SINGLE criterion listed below.\n"
+                    "2. Do not skip any criteria, even if they seem similar.\n"
+                    "3. For each criterion, provide a score from 0-100 and a detailed, constructive feedback paragraph.\n"
+                    "4. Use the specific criterion name from the rubric in your response.\n"
+                    "5. Ensure your overall executive summary addresses the document as a whole."
+                )
+            
+            user_prompt = f"### RUBRIC CRITERIA TO EVALUATE:\n{criteria_text}\n\n"
+            
+            if submission_context:
+                user_prompt += f"### ASSIGNMENT CONTEXT:\n"
+                user_prompt += f"- **Title**: {submission_context.get('title')}\n"
+                user_prompt += f"- **Course**: {submission_context.get('course_code')}\n"
+                user_prompt += f"- **Assignment Type**: {submission_context.get('assignment_type')}\n"
+                user_prompt += f"- **Description**: {submission_context.get('description')}\n"
+                
+                contributors = submission_context.get('contributors', [])
+                if contributors:
+                    user_prompt += f"\n### CONTRIBUTOR METADATA (EDIT HISTORY):\n"
+                    for c in contributors:
+                        user_prompt += f"- **{c.get('name')}**: {c.get('edits')} edits, {c.get('sessions')} sessions. Last active: {c.get('date')}\n"
+                    user_prompt += "\n"
+            
+            user_prompt += f"### DOCUMENT CONTENT:\n{text[:30000]}\n\n"
+            
+            user_prompt += (
+                "### RESPONSE FORMAT:\n"
+                "Return your evaluation ONLY as a valid JSON object with the following structure:\n"
+                "{\n"
+                "  \"score\": total_weighted_score_out_of_100,\n"
+                "  \"ai_summary\": \"overall executive summary of the project\",\n"
+                "  \"collaborative_analysis\": \"a 2-3 sentence analysis of the teamwork and contribution balance based on the contributor metadata provided\",\n"
+                "  \"rubric_evaluation\": [\n"
+                "    {\n"
+                "      \"criterion_name\": \"Name from rubric\",\n"
+                "      \"score\": score_out_of_100,\n"
+                "      \"feedback\": \"specific constructive feedback\"\n"
+                "    }\n"
+                "  ],\n"
+                "  \"strengths\": [\"strength 1\", \"strength 2\"],\n"
+                "  \"weaknesses\": [\"improvement 1\", \"improvement 2\"]\n"
+                "}"
+            )
+
+            model = genai.GenerativeModel('gemini-flash-latest')
+            response = model.generate_content(system_instruction + "\n\n" + user_prompt)
+            
+            if response.text:
+                # Clean up response text if it contains markdown markers
+                raw_text = response.text.strip()
+                if raw_text.startswith('```json'):
+                    raw_text = raw_text[7:]
+                if raw_text.endswith('```'):
+                    raw_text = raw_text[:-3]
+                
+                try:
+                    evaluation_json = json.loads(raw_text.strip())
+                    return evaluation_json, None
+                except json.JSONDecodeError:
+                    current_app.logger.error(f"Failed to parse Gemini JSON response: {raw_text}")
+                    return None, "Gemini returned invalid JSON format"
+            else:
+                return None, "No response from Gemini"
+                
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower():
+                return None, "Gemini API Quota Exceeded. Please try again in 60 seconds."
+            if "404" in error_str:
+                return None, "Gemini Model not found. The service may be temporarily unavailable."
+                
+            if current_app:
+                current_app.logger.error(f"Gemini rubric evaluation failed: {e}")
+            return None, f"AI evaluation failed: {error_str}"
 
     def consolidate_nlp_results(self, local_results, ai_summary=None):
         """
@@ -389,4 +498,88 @@ class NLPService:
         except Exception as e:
             if current_app:
                 current_app.logger.error(f"Consolidation failed: {e}")
-            return local_results, str(e)
+            return None, str(e)
+
+    def generate_rubric_system_prompt(self, rubric_data):
+        """Generate a high-quality system prompt based on rubric details using Gemini"""
+        if not self.gemini_initialized:
+            self._initialize_gemini()
+            
+        if not self.gemini_initialized:
+            return None, "Gemini AI not configured"
+            
+        try:
+            name = rubric_data.get('name', 'General Evaluation')
+            description = rubric_data.get('description', 'Evaluate software project submissions.')
+            criteria = rubric_data.get('criteria', [])
+            
+            criteria_list = "\n".join([f"- {c.get('name')}: {c.get('description')}" for c in criteria])
+            
+            prompt = (
+                f"You are helping a professor design an AI system prompt for a software project evaluation tool called MetaDoc.\n"
+                f"The rubric is named: {name}\n"
+                f"Description: {description}\n"
+                f"Criteria:\n{criteria_list}\n\n"
+                f"Please generate a comprehensive, elite academic system instruction (around 200-300 words) that defines the AI's persona, "
+                f"its strict grading standards, and how it should provide actionable feedback for this specific rubric. "
+                f"The response should start with 'You are an elite academic software project evaluator...' and be ready for use as a system prompt."
+            )
+            
+            model = genai.GenerativeModel('gemini-flash-latest')
+            response = model.generate_content(prompt)
+            
+            if response.text:
+                return response.text.strip(), None
+            else:
+                return None, "Gemini returned empty response"
+                
+        except Exception as e:
+            if current_app:
+                current_app.logger.error(f"Generate rubric prompt failed: {e}")
+            return None, str(e)
+
+    def generate_rubric_criteria(self, rubric_title, rubric_description):
+        """Generate high-quality research criteria using Gemini AI"""
+        if not self.gemini_initialized:
+            self._initialize_gemini()
+            
+        if not self.gemini_initialized:
+            return None, "Gemini AI not configured"
+            
+        try:
+            prompt = (
+                f"You are an expert academic research evaluator. Generate a set of exactly 5 distinct evaluation criteria "
+                f"for a research proposal or project titled: '{rubric_title}'\n"
+                f"Description: '{rubric_description}'\n\n"
+                f"For each criterion, provide a name and a detailed academic description (1-2 sentences).\n"
+                f"Ensure the criteria are professional, rigorous, and highly relevant to the title/description.\n\n"
+                f"Return ONLY a valid JSON array of objects with 'name' and 'description' keys. Example:\n"
+                f"[{{\"name\": \"Criterion Name\", \"description\": \"Detailed description\"}}, ...]"
+            )
+            
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
+            
+            if response.text:
+                # Clean up response text
+                raw_text = response.text.strip()
+                if raw_text.startswith('```json'):
+                    raw_text = raw_text[7:]
+                if raw_text.endswith('```'):
+                    raw_text = raw_text[:-3]
+                
+                import json
+                try:
+                    criteria_list = json.loads(raw_text.strip())
+                    return criteria_list, None
+                except json.JSONDecodeError:
+                    if current_app:
+                        current_app.logger.error(f"Failed to parse Gemini JSON: {raw_text}")
+                    return None, "AI returned invalid format. Please try again."
+            else:
+                return None, "Gemini returned empty response"
+        except Exception as e:
+            if current_app:
+                current_app.logger.error(f"Generate criteria failed: {e}")
+            return None, str(e)
+

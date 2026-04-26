@@ -18,6 +18,7 @@ class Deadline(BaseModel):
     # Assignment details
     course_code = db.Column(db.String(50), nullable=True)
     assignment_type = db.Column(db.String(100), nullable=True)
+    rubric_id = db.Column(db.String(100), nullable=True)
     
     # Foreign key
     professor_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
@@ -37,6 +38,7 @@ class Deadline(BaseModel):
             'timezone': self.timezone,
             'course_code': self.course_code,
             'assignment_type': self.assignment_type,
+            'rubric_id': self.rubric_id,
             'professor_id': self.professor_id,
             'created_at': self.created_at.isoformat()
         }

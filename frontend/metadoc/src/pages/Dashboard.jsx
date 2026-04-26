@@ -13,11 +13,12 @@ import {
   Copy,
   RefreshCw,
   Users,
-} from 'lucide-react';
+} from '../components/common/Icons';
 import Table from '../components/common/Table/Table';
 import Card from '../components/common/Card/Card';
 import Badge from '../components/common/Badge/Badge';
 import Modal from '../components/common/Modal/Modal';
+import { useLoadingState } from '../hooks/useLoadingState';
 import '../styles/Dashboard.css';
 
 const RECENT_LINKS_STORAGE_KEY = 'metadoc_recent_submission_links';
@@ -103,6 +104,7 @@ const Dashboard = () => {
   const location = useLocation();
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { showLongLoading } = useLoadingState(loading);
   const [error, setError] = useState(null);
   const [submissionToken, setSubmissionToken] = useState(null);
   const [tokenLoading, setTokenLoading] = useState(false);
@@ -256,10 +258,57 @@ const Dashboard = () => {
   };
 
   if (loading) {
+    if (showLongLoading) {
+      return (
+        <div className="dashboard-page">
+          <div className="spinner-container-maroon" style={{ height: '70vh' }}>
+            <div className="spinner-maroon"></div>
+            <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Loading Dashboard...</p>
+          </div>
+        </div>
+      );
+    }
     return (
-      <div className="dashboard-loading">
-        <div className="spinner"></div>
-        <p>Loading dashboard...</p>
+      <div className="dashboard-page">
+        <div className="dashboard-header">
+          <div className="skeleton" style={{ width: '250px', height: '2.5rem', marginBottom: '0.5rem' }}></div>
+          <div className="skeleton" style={{ width: '400px', height: '1.25rem' }}></div>
+        </div>
+
+        <div className="skeleton-link-banner">
+          <div className="skeleton" style={{ width: '200px', height: '1.5rem' }}></div>
+          <div className="flex gap-4">
+            <div className="skeleton" style={{ flex: 1, height: '2.5rem', borderRadius: '8px' }}></div>
+            <div className="skeleton" style={{ width: '120px', height: '2.5rem', borderRadius: '8px' }}></div>
+          </div>
+        </div>
+
+        <div className="stats-grid" style={{ marginBottom: '2rem' }}>
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="skeleton-stat-card">
+              <div className="skeleton skeleton-icon-box"></div>
+              <div className="skeleton-stat-content">
+                <div className="skeleton skeleton-text-sm"></div>
+                <div className="skeleton skeleton-text-lg"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="dashboard-section">
+          <div className="skeleton" style={{ width: '200px', height: '1.75rem', marginBottom: '1.5rem' }}></div>
+          <div className="skeleton-table-card">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="skeleton-table-row">
+                <div className="skeleton skeleton-table-cell"></div>
+                <div className="skeleton skeleton-table-cell"></div>
+                <div className="skeleton skeleton-table-cell" style={{ flex: 0.5 }}></div>
+                <div className="skeleton skeleton-table-cell"></div>
+                <div className="skeleton skeleton-table-cell" style={{ flex: 0.7 }}></div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -336,10 +385,10 @@ const Dashboard = () => {
       render: (submission) => {
         const statusLabel = resolveSubmissionTimeliness(submission);
         return (
-        <Badge variant={getStatusColor(statusLabel)}>
-          {statusLabel}
-        </Badge>
-      );
+          <Badge variant={getStatusColor(statusLabel)}>
+            {statusLabel}
+          </Badge>
+        );
       }
     }
   ];
@@ -448,6 +497,7 @@ const Dashboard = () => {
   };
 
   const filteredRecentGeneratedLinks = recentGeneratedLinks.filter((entry) =>
+    entry.deadline_id &&
     String(entry.title || '')
       .toLowerCase()
       .includes(recentLinksSearch.trim().toLowerCase())
@@ -542,9 +592,11 @@ const Dashboard = () => {
         ) : (
           <div className="recent-links-list">
             {filteredRecentGeneratedLinks.map((entry) => (
-              <div key={`${entry.deadline_id}-${entry.token}`} className="recent-link-row">
+              <div key={`${entry.token}`} className="recent-link-row">
                 <div className="recent-link-main">
-                  <p className="recent-link-title">{entry.title}</p>
+                  <p className="recent-link-title">
+                    {entry.title}
+                  </p>
                   <code className="recent-link-url">{entry.url}</code>
                 </div>
                 <div className="recent-link-side">

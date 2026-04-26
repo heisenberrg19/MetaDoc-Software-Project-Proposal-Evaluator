@@ -19,7 +19,7 @@ import {
   CircleHelp,
   ChevronDown,
   ChevronUp,
-} from 'lucide-react';
+} from '../common/Icons';
 import logo from '../../assets/images/MainLogo.png';
 import citLogo from '../../assets/images/cit_logo.png';
 import quindaoProfile from '../../assets/images/members/Quindao_Profile.jpg';
@@ -58,6 +58,7 @@ const DashboardLayout = ({ children }) => {
   const isSpecialPage = location.pathname.includes('/reports') || 
                         location.pathname.includes('/dashboard/class-list') || 
                         location.pathname.includes('/dashboard/deliverables') ||
+                        location.pathname.includes('/dashboard/rubrics') ||
                         location.pathname.includes('/dashboard/submissions') ||
                         location.pathname === '/dashboard';
 
@@ -69,9 +70,10 @@ const DashboardLayout = ({ children }) => {
 
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-    { path: '/dashboard/deliverables', icon: Folder, label: 'Deliverable' },
+    { path: '/dashboard/deliverables', icon: Folder, label: 'Deliverables' },
     { path: '/dashboard/class-list', icon: Users, label: 'Class List' },
     { path: '/dashboard/reports', icon: FileBarChart, label: 'Reports' },
+    { path: '/dashboard/rubrics', icon: ClipboardList, label: 'Rubrics' },
   ];
 
   const teamMembers = [
@@ -106,11 +108,11 @@ const DashboardLayout = ({ children }) => {
   ];
 
   const professorFlow = [
-    'Create deliverables and set deadlines in the Deliverables page to generate a submission link.',
+    'Create deliverables and set deadlines in the Deliverables page to generate unique submission links for each specific requirement.',
     'Manage your student roster and monitor team assignments via the Class List page.',
-    'Share the generated submission link with students to allow them to upload their proposals via the Student Portal.',
-    'Review AI-driven document insights, metadata analysis, and compliance checks in the Reports page.',
-    'Track overall progress, late submissions, and class metrics on the Dashboard Overview.',
+    'Share the generated submission link with students. Links are automatically tied to the selected deliverable and expire after the deadline.',
+    'Review AI Analysis & Evaluation in the Reports page to view document metadata, AI-driven insights, and compliance checks.',
+    'Track overall progress, submission timeliness, and class metrics on the Dashboard Overview.',
   ];
 
   const faqItems = [
@@ -120,7 +122,7 @@ const DashboardLayout = ({ children }) => {
     },
     {
       question: 'How does the system evaluate the submitted documents?',
-      answer: 'MetaDoc utilizes NLP and metadata extraction to automatically analyze submissions for proper formatting, compliance, and content structure, displaying the results in the Reports page.',
+      answer: 'MetaDoc performs an AI Analysis & Evaluation on every submission, checking for proper metadata, formatting, and document structure, and providing AI-generated insights.',
     },
     {
       question: 'Where can I check if submissions are late or on time?',
@@ -131,8 +133,12 @@ const DashboardLayout = ({ children }) => {
       answer: 'Yes, you can use the Class List page to review student profiles, verify group assignments, and track individual student involvement.',
     },
     {
+      question: 'What happens to links when a deliverable is deleted?',
+      answer: 'If you delete a deliverable, its associated submission link will be automatically removed from the system history and will no longer be accessible to students.',
+    },
+    {
       question: 'What should I do if a student submits an incorrect file?',
-      answer: 'Locate their submission in the Reports page, delete or archive the invalid entry, and instruct the student to re-submit their correct document using the same submission link.',
+      answer: 'Locate their submission in the Reports page, delete the invalid entry, and instruct the student to re-submit their correct document using the active submission link.',
     },
   ];
 

@@ -106,6 +106,13 @@ class AnalysisResultDTO:
         if not analysis:
             return None
         
+        # Extract rubric evaluation data from nlp_results or ai_insights (backup)
+        nlp_raw = analysis.nlp_results or {}
+        ai_raw = analysis.ai_insights or {}
+        
+        # Merge them to find rubric fields, prioritizing whichever has 'rubric_evaluation'
+        eval_source = nlp_raw if nlp_raw.get('rubric_evaluation') else ai_raw
+        
         data = {
             'id': analysis.id,
             'submission_id': analysis.submission_id,
@@ -119,13 +126,23 @@ class AnalysisResultDTO:
             'readability_grade': analysis.readability_grade,
             'named_entities': analysis.named_entities,
             'top_terms': analysis.top_terms,
-            'ai_summary': analysis.ai_summary,
+            
+            # AI evaluation fields
+            'ai_summary': analysis.ai_summary or eval_source.get('ai_summary'),
+            'score': eval_source.get('score'),
+            'rubric_evaluation': eval_source.get('rubric_evaluation', []),
+            'strengths': eval_source.get('strengths', []),
+            'weaknesses': eval_source.get('weaknesses', []),
+            'reviewer_persona': eval_source.get('reviewer_persona'),
+            'evaluation_goal': eval_source.get('evaluation_goal'),
+            
             'ai_insights': analysis.ai_insights,
             'is_complete_document': analysis.is_complete_document,
             'validation_warnings': analysis.validation_warnings,
             'analysis_version': analysis.analysis_version,
             'processing_duration_seconds': analysis.processing_duration_seconds,
-            'created_at': analysis.created_at.isoformat() if hasattr(analysis, 'created_at') else None
+            'created_at': analysis.created_at.isoformat() if hasattr(analysis, 'created_at') else None,
+            'updated_at': analysis.updated_at.isoformat() if hasattr(analysis, 'updated_at') else None
         }
         
         if include_full_text and hasattr(analysis, 'document_text'):

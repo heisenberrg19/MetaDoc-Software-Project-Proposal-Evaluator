@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, rubricAPI } from '../services/api';
 import {
   ArrowLeft,
+  RefreshCw,
   FileText,
   User,
   Calendar,
@@ -14,10 +15,14 @@ import {
   ExternalLink,
   Users,
   Flag,
-  X
-} from 'lucide-react';
+  X,
+  Sparkles,
+  CheckCircle,
+  ClipboardList
+} from '../components/common/Icons';
 import Card from '../components/common/Card/Card';
 import Badge from '../components/common/Badge/Badge';
+import logo4 from '../assets/images/Logo4.jpg';
 import '../styles/SubmissionDetail.css';
 
 const formatStudentId = (input) => {
@@ -44,6 +49,7 @@ const normalizeContributorRole = (role) => {
   return 'Editor';
 };
 
+
 const SubmissionDetailView = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -51,32 +57,93 @@ const SubmissionDetailView = () => {
   const [submission, setSubmission] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [contributionReport, setContributionReport] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [expandedFeedback, setExpandedFeedback] = useState({
-    primary: false,
-    contributor: false,
-  });
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('Initializing...');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const hasAttemptedAutoAnalysis = useRef(false);
 
   useEffect(() => {
     fetchSubmissionDetail();
   }, [id]);
 
+  useEffect(() => {
+    if (submission && !loading && !isAnalyzing) {
+      const checkAndRunAnalysis = async () => {
+        const analysis = submission.analysis_result;
+        let needsAnalysis = false;
+        let reason = "";
+
+        // Case 1: No analysis at all or empty evaluation
+        if (!analysis || !analysis.rubric_evaluation || analysis.rubric_evaluation.length === 0) {
+          needsAnalysis = true;
+          reason = "No existing analysis found";
+        } else {
+          try {
+            // Case 2: Check if rubric has been updated
+            const rubricResponse = await rubricAPI.getRubrics();
+            const rubrics = rubricResponse.data;
+
+            // Use the rubric specifically assigned to this deadline
+            const targetId = submission.deadline?.rubric_id;
+            const activeRubric = rubrics.find(r => String(r.id) === String(targetId)) ||
+              rubrics.find(r => r.is_active) ||
+              rubrics[0];
+
+            if (activeRubric) {
+              const rubricDate = activeRubric.updated_at ? new Date(activeRubric.updated_at) : null;
+              const analysisDate = analysis.updated_at ? new Date(analysis.updated_at) : null;
+
+              // Case 3: Number of criteria has changed
+              const rubricCriteriaCount = activeRubric.criteria?.length || 0;
+              const analysisEvaluationCount = analysis.rubric_evaluation?.length || 0;
+
+              if (rubricCriteriaCount !== analysisEvaluationCount) {
+                needsAnalysis = true;
+                reason = `Criteria count mismatch: Rubric has ${rubricCriteriaCount}, Analysis has ${analysisEvaluationCount}`;
+              } else {
+                const rubricNames = (activeRubric.criteria || []).map(c => c.name).sort().join('|');
+                const analysisNames = (analysis.rubric_evaluation || []).map(e => e.criterion_name).sort().join('|');
+
+                if (rubricNames !== analysisNames) {
+                  needsAnalysis = true;
+                  reason = "Criteria names have changed";
+                } else if (rubricDate && analysisDate && rubricDate.getTime() > analysisDate.getTime()) {
+                  needsAnalysis = true;
+                  reason = `Rubric updated (${rubricDate.toLocaleTimeString()}) after last analysis (${analysisDate.toLocaleTimeString()})`;
+                } else if (!analysisDate && rubricDate) {
+                  needsAnalysis = true;
+                  reason = "Analysis has no timestamp but rubric does";
+                }
+              }
+            }
+          } catch (e) {
+            console.error("[AutoAnalysis] Failed to check rubric for updates", e);
+          }
+        }
+
+        if (needsAnalysis && !isAnalyzing && !hasAttemptedAutoAnalysis.current) {
+          hasAttemptedAutoAnalysis.current = true;
+          console.log(`[AutoAnalysis] Triggering analysis. Reason: ${reason}`);
+          handleRunAIEvaluation();
+        }
+      };
+
+      checkAndRunAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submission, loading, isAnalyzing]);
+
+  /* Ensure loading state lasts at least 2 seconds */
   /* Ensure loading state lasts at least 2 seconds */
   const fetchSubmissionDetail = async () => {
     try {
       setLoading(true);
-      const [response] = await Promise.all([
-        dashboardAPI.getSubmissionDetail(id, { forceRefresh: true }),
-        new Promise(resolve => setTimeout(resolve, 1200))
-      ]);
-      setSubmission(response.data);
+      setShowSuccessModal(false);
 
-      // Fetch contribution report if it's a Drive link
-      if (response.data.submission_type === 'drive_link') {
-        fetchContributionReport({ refresh: true });
-      }
+      const response = await dashboardAPI.getSubmissionDetail(id, { forceRefresh: true });
+      
+      setSubmission(response.data);
     } catch (err) {
       setError('Failed to load submission details');
       console.error('Submission detail error:', err);
@@ -85,33 +152,18 @@ const SubmissionDetailView = () => {
     }
   };
 
-  const [reportError, setReportError] = useState(null);
-
-  const fetchContributionReport = async (options = {}) => {
-    try {
-      setReportError(null);
-      setReportLoading(true);
-      const response = await dashboardAPI.getContributionReport(id, { refresh: !!options.refresh });
-      setContributionReport(response.data);
-    } catch (err) {
-      console.error('Failed to load contribution report:', err);
-      const msg = err.response?.data?.error || 'Unable to generate revision report.';
-      setReportError(msg);
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
   if (loading) {
     return (
-      <div className="detail-loading">
-        <div className="spinner"></div>
-        <p>Loading submission details...</p>
+      <div className="detail-page" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <div className="spinner-maroon"></div>
+        <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Loading submission...</p>
       </div>
     );
   }
 
   if (error || !submission) {
+    const analysis = submission?.analysis_result;
+
     return (
       <div className="detail-error">
         <AlertCircle size={48} />
@@ -177,97 +229,115 @@ const SubmissionDetailView = () => {
     }
   };
 
-  const analysis = submission.analysis_result;
+  const analysis = submission?.analysis_result;
 
-  const buildContributorFeedback = (contributor, roleLabel) => {
-    if (!contributor) {
-      return 'As the AI reviewer, I cannot identify a reliable contributor profile from the current revision evidence. Please verify whether the file has enough measurable editing activity.';
+  const handleRunAIEvaluation = async () => {
+    setIsAnalyzing(true);
+    setProgress(0);
+    setProgressText('Preparing AI analysis...');
+
+    // Clear existing analysis so the user only sees the loading state
+    setSubmission(prev => ({
+      ...prev,
+      analysis_result: null
+    }));
+
+    try {
+      // 1. Try to get the rubric assigned to the deadline from DB first
+      let activeRubric = null;
+      try {
+        const rubricResponse = await rubricAPI.getRubrics();
+        const rubrics = rubricResponse.data;
+
+        // Match by deadline's rubric_id or find the active one
+        const targetId = submission.deadline?.rubric_id;
+        activeRubric = rubrics.find(r => String(r.id) === String(targetId)) ||
+          rubrics.find(r => r.is_active) ||
+          rubrics[0];
+      } catch (e) {
+        console.warn("Failed to fetch rubrics from DB, falling back to localStorage", e);
+        const savedRubrics = JSON.parse(localStorage.getItem('metadoc_rubrics') || '[]');
+        const targetId = submission.deadline?.rubric_id;
+        activeRubric = savedRubrics.find(r => String(r.id) === String(targetId)) ||
+          savedRubrics.find(r => r.is_active) ||
+          savedRubrics[0];
+      }
+
+      if (!activeRubric || !activeRubric.criteria || activeRubric.criteria.length === 0) {
+        alert("Please create and save a rubric in the Rubric Management page first.");
+        setIsAnalyzing(false);
+        return;
+      }
+
+      const duration = 3000;
+      const intervalMs = 50;
+      const steps = duration / intervalMs;
+      let currentStep = 0;
+
+      const progressInterval = setInterval(() => {
+        currentStep++;
+        const targetProgress = Math.min(95, (currentStep / steps) * 95);
+        setProgress(targetProgress);
+        
+        if (targetProgress < 30) setProgressText('Reading document context...');
+        else if (targetProgress < 60) setProgressText('Evaluating against rubric...');
+        else if (targetProgress < 90) setProgressText('Synthesizing feedback...');
+        else setProgressText('Finalizing AI report...');
+      }, intervalMs);
+
+      // 2. Call the real AI evaluation API
+      const response = await dashboardAPI.runAIEvaluation(id, activeRubric);
+      
+      clearInterval(progressInterval);
+      setProgress(100);
+      setProgressText('Complete');
+      
+      // Wait for 1 second at 100% before completing analysis
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Update local state with fresh analysis
+      setSubmission(prev => ({
+        ...prev,
+        analysis_result: {
+          ...prev.analysis_result,
+          ...response.data
+        }
+      }));
+
+      setShowSuccessModal(true);
+      setTimeout(() => setShowSuccessModal(false), 4000);
+
+      // If we are in a "Pending" state, refresh the whole submission to get the 'Completed' status
+      if (submission.status !== 'completed') {
+        const detailResponse = await dashboardAPI.getSubmissionDetail(id);
+        setSubmission(detailResponse.data);
+      }
+
+    } catch (err) {
+      console.error('AI Evaluation error:', err);
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to perform AI evaluation.';
+
+      if (errorMsg.includes('429')) {
+        alert("Gemini AI Quota Exceeded. Please wait a minute before trying again.");
+      } else if (errorMsg.includes('404')) {
+        alert("Gemini AI Model not found. Attempting to recover...");
+      } else {
+        alert(`AI Evaluation Error: ${errorMsg}`);
+      }
+    } finally {
+      setIsAnalyzing(false);
     }
-
-    const name = contributor.name || roleLabel;
-    const contributionPercent = Number(contributor.contributionPercent || 0).toFixed(2);
-    const revisions = Number(contributor.revisionCount || 0);
-    const sessions = Number(contributor.sessionCount || 0);
-    const minutes = Number(contributor.activeEditingMinutes || 0).toFixed(2);
-    const workStatus = String(contributor.workStatus || roleLabel).toLowerCase();
-    const aiReason = String(contributor.aiReason || '').trim();
-
-    const summarySentence = `As the AI reviewer, I classify ${name} as ${roleLabel} with ${contributionPercent}% measured contribution from ${revisions} revisions, ${sessions} sessions, and ${minutes} active editing minutes.`;
-
-    const interpretationSentence = aiReason
-      ? `This aligns with the behavioral signal that ${aiReason.charAt(0).toLowerCase()}${aiReason.slice(1)}`
-      : `The activity pattern indicates ${workStatus}, which is consistent with the contributor's current role in the document workflow.`;
-
-    const recommendationSentence = roleLabel === 'Primary Worker'
-      ? 'Recommendation: keep this member leading core drafting while distributing smaller revision tasks to others for balance.'
-      : 'Recommendation: increase planned edit ownership in earlier drafting stages to strengthen contribution depth.';
-
-    return `${summarySentence} ${interpretationSentence} ${recommendationSentence}`;
-  };
-
-  const resolveFeedbackSummary = () => {
-    const contributors = (contributionReport?.contributors || []).filter((contributor) => {
-      const revisions = Number(contributor.revisionCount || 0);
-      const sessions = Number(contributor.sessionCount || 0);
-      const minutes = Number(contributor.activeEditingMinutes || 0);
-      return revisions > 0 || sessions > 0 || minutes > 0;
-    });
-
-    if (!contributors.length) {
-      return {
-        primary: null,
-        contributor: null,
-      };
-    }
-
-    const sorted = [...contributors].sort(
-      (left, right) => Number(right.contributionPercent || 0) - Number(left.contributionPercent || 0)
-    );
-
-    const primary = sorted.find((c) => c.workStatus === 'Primary Worker') || sorted[0] || null;
-    const contributor =
-      sorted.find((c) => c.name !== primary?.name && c.workStatus === 'Contributing') ||
-      sorted.find((c) => c.name !== primary?.name) ||
-      null;
-
-    return {
-      primary,
-      contributor,
-    };
-  };
-
-  const feedbackSummary = resolveFeedbackSummary();
-  const longFeedbackLimit = 210;
-
-  const renderFeedbackText = (text, keyName) => {
-    const safeText = String(text || 'No summary feedback available.');
-    const isLong = safeText.length > longFeedbackLimit;
-    const isExpanded = !!expandedFeedback[keyName];
-    const displayText = isLong && !isExpanded
-      ? `${safeText.slice(0, longFeedbackLimit).trim()}...`
-      : safeText;
-
-    return (
-      <>
-        <p className="feedback-message-text">{displayText}</p>
-        {isLong && (
-          <button
-            type="button"
-            className="feedback-see-more-btn"
-            onClick={() => setExpandedFeedback((prev) => ({
-              ...prev,
-              [keyName]: !prev[keyName],
-            }))}
-          >
-            {isExpanded ? 'See less' : 'See more'}
-          </button>
-        )}
-      </>
-    );
   };
 
   return (
     <div className="detail-page">
+      {showSuccessModal && (
+        <div className="success-header-modal">
+          <CheckCircle size={20} />
+          <span>Report Generated Successfully!</span>
+        </div>
+      )}
+      
       <button className="btn btn-ghost mb-lg" onClick={handleBack}>
         <ArrowLeft size={20} />
         Back
@@ -275,7 +345,7 @@ const SubmissionDetailView = () => {
 
       <div className="detail-header">
         <div className="detail-title-section">
-          <h1 className="text-3xl font-bold text-gray-900">{submission.original_filename}</h1>
+          <h1>{submission.original_filename}</h1>
           <Badge variant={getStatusColor(submission.status)}>
             {submission.status}
           </Badge>
@@ -285,11 +355,11 @@ const SubmissionDetailView = () => {
           <ExternalLink size={16} className="mr-2" />
           View File
         </button>
-
       </div>
 
+
       <div className="detail-grid">
-        {/* Basic Information */}
+        {/* Basic Information & Document Metadata side by side */}
         <Card title="Basic Information" className="h-full">
           <div className="info-grid">
             <div className="info-item">
@@ -328,32 +398,6 @@ const SubmissionDetailView = () => {
             </div>
           </div>
         </Card>
-
-        {/* Content Statistics */}
-        {analysis?.content_statistics && (
-          <Card title="Content Statistics" className="h-full">
-            <div className="stats-list">
-              <div className="stat-item">
-                <span className="stat-label">Word Count</span>
-                <span className="stat-number">{analysis.content_statistics?.word_count || 0}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Character Count</span>
-                <span className="stat-number">{analysis.content_statistics?.character_count || 0}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Sentence Count</span>
-                <span className="stat-number">{analysis.content_statistics?.sentence_count || 0}</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-label">Page Count</span>
-                <span className="stat-number">{analysis.content_statistics?.page_count || 0}</span>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* Document Metadata */}
         {analysis?.document_metadata && (
           <Card title="Document Metadata" className="h-full">
             <div className="info-grid mb-6">
@@ -400,9 +444,9 @@ const SubmissionDetailView = () => {
             </div>
 
             {/* Group Members / Contributors */}
-            <div className="pt-6 border-t border-gray-100">
+            <div className="pt-8 border-t border-gray-100">
               <h4 className="section-subtitle">
-                <User size={16} />
+                <Users size={20} />
                 Group Members / Contributors
               </h4>
               <div className="contributors-list">
@@ -411,11 +455,9 @@ const SubmissionDetailView = () => {
 
                   // Use backend provided contributors list if available
                   if (analysis.document_metadata.contributors && analysis.document_metadata.contributors.length > 0) {
-                    contributors = analysis.document_metadata.contributors; // Assume simple shape for now
+                    contributors = analysis.document_metadata.contributors;
                   } else {
                     // Fallback logic
-                    // Add author with creation date
-                    // Add author with creation date
                     if (analysis.document_metadata.author) {
                       contributors.push({
                         name: analysis.document_metadata.author,
@@ -423,8 +465,6 @@ const SubmissionDetailView = () => {
                         date: analysis.document_metadata.created_date || analysis.document_metadata.creation_date,
                       });
                     }
-
-                    // Add last editor with modification date (if different from author)
                     if (analysis.document_metadata.last_editor &&
                       analysis.document_metadata.last_editor !== analysis.document_metadata.author) {
                       contributors.push({
@@ -436,233 +476,204 @@ const SubmissionDetailView = () => {
                   }
 
                   return contributors.length > 0 ? (
-                    contributors.map((contributor, index) => (
-                      <div key={index} className="contributor-item">
-                        <div className="contributor-icon">
-                          <User size={14} />
-                        </div>
-                        <div className="contributor-details">
-                          <div className="contributor-name">
-                            <strong>{contributor.name}</strong>
-                            <span className="contributor-role">({normalizeContributorRole(contributor.role)})</span>
-                          </div>
-                          {(contributor.date || contributor.email) && (
-                            <div className="contributor-date">
-                              {contributor.date && !isNaN(Date.parse(contributor.date)) ? new Date(contributor.date).toLocaleString([], {
-                                year: 'numeric',
-                                month: 'numeric',
-                                day: 'numeric',
-                                hour: 'numeric',
-                                minute: '2-digit',
-                              }) : contributor.email}
+                    contributors.map((contributor, index) => {
+                      const role = normalizeContributorRole(contributor.role);
+                      return (
+                        <div key={index} className="contributor-item">
+                          <div className="contributor-details">
+                            <div className="contributor-name-row">
+                              <span className="contributor-name">{contributor.name}</span>
+                              <span className={`contributor-role-tag tag-${role.toLowerCase()}`}>
+                                {role}
+                              </span>
                             </div>
-                          )}
+                            {(contributor.date || contributor.email) && (
+                              <div className="contributor-meta" title="Time of last document contribution">
+                                {contributor.date && !isNaN(Date.parse(contributor.date)) ? (
+                                  <>
+                                    <span className="meta-prefix">Last activity:</span>
+                                    <Calendar size={14} />
+                                    <span>
+                                      {new Date(contributor.date).toLocaleDateString([], {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </span>
+                                    <Clock size={14} className="ml-2" />
+                                    <span>
+                                      {new Date(contributor.date).toLocaleTimeString([], {
+                                        hour: 'numeric',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span>{contributor.email}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-muted">No contributor information available</p>
                   );
                 })()}
               </div>
             </div>
+
           </Card>
         )}
 
-        {/* Collaborative Effort Report (Google Drive Only) */}
-        {submission.submission_type === 'drive_link' && (
+        {/* AI Proposal Analysis Section */}
+        <div className="card-full-width">
           <Card
             title={
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--spacing-sm)', width: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <Users size={20} />
-                  Collaborative Effort Report
-                </div>
-                <button
-                  type="button"
-                  className="feedback-flag-btn"
-                  title="View Summary Feedback"
-                  onClick={() => {
-                    setExpandedFeedback({ primary: false, contributor: false });
-                    setShowFeedbackModal(true);
-                  }}
-                >
-                  <Flag size={16} />
-                </button>
+              <div className="flex items-center gap-2">
+                <FileText size={20} />
+                <span>AI Analysis & Evaluation</span>
               </div>
             }
             className="h-full"
           >
-            {reportLoading ? (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-500">
-                <div className="spinner-small mb-4"></div>
-                <p>Generating contribution report...</p>
-              </div>
-            ) : contributionReport ? (
-              <div className="space-y-6">
-                <div className="text-sm text-gray-500 mb-4">
-                  Total Revisions Analyzed: <strong>{contributionReport.totalRevisions}</strong>
-                </div>
-
-                {(() => {
-                  const visibleContributors = (contributionReport.contributors || []).filter((contributor) => {
-                    const revisions = Number(contributor.revisionCount || 0);
-                    const sessions = Number(contributor.sessionCount || 0);
-                    const minutes = Number(contributor.activeEditingMinutes || 0);
-                    return revisions > 0 || sessions > 0 || minutes > 0;
-                  });
-
-                  return (
-                    <div className="space-y-4">
-                      {visibleContributors.map((contributor, idx) => (
-                        <div key={idx} className="contribution-item">
-                          <div className="flex justify-between items-center mb-1">
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-gray-800">
-                                {contributor.name}
-                              </span>
-                              {contributor.workStatus && (
-                                <span className={`text-[11px] ${contributor.workStatus === 'No Work Detected' ? 'text-red-600' : 'text-emerald-600'}`}>
-                                  {contributor.workStatus}
-                                </span>
-                              )}
-                              {contributor.email && (
-                                <span className="text-xs text-gray-500">
-                                  {contributor.email}
-                                </span>
-                              )}
-                              {contributor.studentProfile?.studentId && (
-                                <span className="text-[11px] text-gray-500">
-                                  {contributor.studentProfile.studentId}
-                                  {contributor.studentProfile.teamCode ? ` | Team ${contributor.studentProfile.teamCode}` : ''}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-right">
-                              <span className="text-sm font-bold text-maroon">
-                                {contributor.contributionPercent}%
-                              </span>
-                              <div className="text-xs text-gray-400">
-                                {contributor.revisionCount} revisions
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {contributor.sessionCount || 0} sessions | {contributor.activeEditingMinutes || 0} mins
-                              </div>
-                              {Array.isArray(contributor.heuristics) && contributor.heuristics.length > 0 && (
-                                <div className="text-xs text-amber-700 mt-1" style={{ maxWidth: '260px' }}>
-                                  {contributor.heuristics.join(' | ')}
-                                </div>
-                              )}
-                              {contributor.aiEffortLabel && (
-                                <div className="text-xs text-indigo-700 mt-1" style={{ maxWidth: '260px' }}>
-                                  AI: {contributor.aiEffortLabel}
-                                </div>
-                              )}
-                              {contributor.documentMetadataConnection && (
-                                <div className="text-[11px] text-gray-500 mt-1" style={{ maxWidth: '260px' }}>
-                                  {contributor.documentMetadataConnection.isDriveOwner ? 'Drive owner' : ''}
-                                  {contributor.documentMetadataConnection.isDriveOwner && contributor.documentMetadataConnection.isDriveLastModifier ? ' | ' : ''}
-                                  {contributor.documentMetadataConnection.isDriveLastModifier ? 'Last modifier' : ''}
-                                  {(contributor.documentMetadataConnection.isDriveOwner || contributor.documentMetadataConnection.isDriveLastModifier) && contributor.documentMetadataConnection.emailSeenInDocumentMetadata ? ' | ' : ''}
-                                  {contributor.documentMetadataConnection.emailSeenInDocumentMetadata ? 'Seen in doc metadata' : ''}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Custom Progress Bar */}
-                          <div style={{
-                            height: '8px',
-                            width: '100%',
-                            background: '#f3f4f6',
-                            borderRadius: '4px',
-                            overflow: 'hidden'
-                          }}>
-                            <div style={{
-                              height: '100%',
-                              width: `${contributor.contributionPercent}%`,
-                              background: contributor.name === 'Unverified Contributor' ? '#9ca3af' : 'var(--color-maroon)',
-                              transition: 'width 1s ease-out'
-                            }}></div>
-                          </div>
-                        </div>
-                      ))}
+            <div className="space-y-8">
+              {/* Premium Overall Score Section */}
+              {analysis && !isAnalyzing && (
+                <div className="ai-overall-score-container">
+                  <div className="ai-score-text-content">
+                    <h4 className="ai-overall-score-label">OVERALL SCORE</h4>
+                    <p className="ai-overall-score-subtext">Aggregated across all evaluation criteria.</p>
+                  </div>
+                  <div className="ai-score-visual-wrapper">
+                    <div className="score-circle-container">
+                      <svg viewBox="0 0 100 100" className="score-svg">
+                        <circle cx="50" cy="50" r="45" className="score-circle-bg" />
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="45"
+                          className="score-circle-fg"
+                          style={{
+                            strokeDasharray: '282.7',
+                            strokeDashoffset: 282.7 - (282.7 * (analysis?.score || 0) / 100)
+                          }}
+                        />
+                      </svg>
+                      <div className="score-display">
+                        <span className="score-main">{Math.round(analysis?.score || 0)}</span>
+                        <span className="score-denominator">/ 100</span>
+                      </div>
                     </div>
-                  );
-                })()}
+                  </div>
+                </div>
+              )}
 
-                {Array.isArray(contributionReport.flags) && contributionReport.flags.length > 0 && (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] text-amber-700">
-                    <p className="m-0">
-                      {contributionReport.flags.join(' | ')}
+              {isAnalyzing && (
+                <div className="processing-card is-analyzing-card">
+                  <div className="processing-header-row">
+                    <div className="processing-icon-box">
+                      <img src={logo4} alt="Loading" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                    </div>
+                    <h3 className="processing-title">Generating Report...</h3>
+                  </div>
+                  <div className="processing-progress-container">
+                    <div className="processing-progress-bar-bg">
+                      <div 
+                        className="processing-progress-bar-fill" 
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className="processing-footer-row">
+                    <span className="processing-subtext">{progressText}</span>
+                    <span className="processing-percentage">{Math.round(progress)}%</span>
+                  </div>
+                </div>
+              )}
+              {(!isAnalyzing && (!analysis || !analysis.rubric_evaluation || analysis.rubric_evaluation.length === 0)) && (
+                <div className="unavailable-state">
+                  <AlertCircle size={32} className="text-slate-300" />
+                  <h4>Analysis Unavailable</h4>
+                  <p>Unable to generate AI evaluation for this document.</p>
+                </div>
+              )}
+
+              {analysis?.ai_summary && !isAnalyzing && (
+                <div className="ai-analysis-container">
+                  {/* Executive Summary */}
+                  <div className="ai-exec-summary">
+                    <h3>
+                      <Sparkles size={16} className="text-maroon" /> Executive Summary
+                    </h3>
+                    <p>
+                      {analysis.ai_summary}
                     </p>
                   </div>
-                )}
 
-                <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[11px] text-gray-500">
-                  <div className="flex items-start gap-2.5 leading-5">
-                    <span className="mt-[2px] shrink-0 text-gray-400">
-                      <AlertCircle size={12} />
-                    </span>
-                    <p className="m-0">
-                      Contribution is calculated from active edit sessions ({contributionReport.scoring?.sessionWindowMinutes || 30}-minute windows) using Google Drive revision metadata only. Flags are investigative and should be used as conversation starters, not automatic grade deductions.
-                    </p>
+                  {/* Strengths and Weaknesses */}
+                  <div className="ai-feedback-grid">
+                    {analysis?.strengths && (
+                      <div className="ai-strengths">
+                        <h3>
+                          <CheckCircle size={16} /> Key Strengths
+                        </h3>
+                        <ul className="ai-list strengths">
+                          {(Array.isArray(analysis.strengths) ? analysis.strengths : [analysis.strengths]).map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {analysis?.weaknesses && (
+                      <div className="ai-weaknesses">
+                        <h3>
+                          <AlertCircle size={16} /> Areas for Improvement
+                        </h3>
+                        <ul className="ai-list weaknesses">
+                          {(Array.isArray(analysis.weaknesses) ? analysis.weaknesses : [analysis.weaknesses]).map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-gray-400 text-center">
-                <AlertCircle size={32} className="mb-2" />
-                <p>{reportError || 'Unable to generate revision report for this document.'}</p>
-                {reportError?.includes('permissions') && (
-                  <p className="text-xs mt-4 bg-gray-50 p-2 rounded border border-gray-100 italic">
-                    Tip: Ensure the document is shared as "Anyone with the link can edit/view" for revision history access.
-                  </p>
-                )}
-              </div>
-            )}
-          </Card>
-        )}
 
-        {showFeedbackModal && (
-          <div className="feedback-modal-overlay" onClick={() => setShowFeedbackModal(false)}>
-            <div className="feedback-modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="feedback-modal-header">
-                <h3>Summary Feedback</h3>
-                <button type="button" className="feedback-modal-close" onClick={() => setShowFeedbackModal(false)}>
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="feedback-modal-body">
-                <div className="feedback-block">
-                  <div className="feedback-label">Primary Worker</div>
-                  <div className="feedback-name">
-                    {feedbackSummary.primary?.name || 'Not identified'}
-                  </div>
-                  {renderFeedbackText(buildContributorFeedback(feedbackSummary.primary, 'Primary Worker'), 'primary')}
+                  {/* Detailed Rubric Evaluation */}
+                  {analysis?.rubric_evaluation && (
+                    <div className="ai-detailed-eval">
+                      <h3 className="ai-detailed-eval-header">
+                        <ClipboardList size={18} /> DETAILED EVALUATION
+                      </h3>
+                      <div className="ai-criteria-list">
+                        {analysis.rubric_evaluation.map((item, index) => (
+                          <div key={index} className="ai-criterion-card">
+                            <div className="ai-criterion-content">
+                              <div className="ai-criterion-header">
+                                <span className="ai-criterion-index">
+                                  {(index + 1)}
+                                </span>
+                                <h4 className="ai-criterion-name">{item.criterion_name}</h4>
+                              </div>
+                              <p className="ai-criterion-feedback">
+                                {item.feedback}
+                              </p>
+                            </div>
+                            <div className="ai-criterion-score">
+                              <div className="ai-score-val">{item.score}</div>
+                              <div className="ai-score-label">SCORE / 100</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                <div className="feedback-block">
-                  <div className="feedback-label">Contributor</div>
-                  <div className="feedback-name">
-                    {feedbackSummary.contributor?.name || 'Not identified'}
-                  </div>
-                  {renderFeedbackText(buildContributorFeedback(feedbackSummary.contributor, 'Contributor'), 'contributor')}
-                </div>
-              </div>
+              )}
             </div>
-          </div>
-        )}
-
-        {/* AI Summary and Evaluation */}
-        {analysis?.ai_summary && (
-          <div className="card-full-width space-y-6">
-            <Card title="AI-Generated Summary">
-              <p className="ai-summary">{analysis.ai_summary}</p>
-            </Card>
-          </div>
-        )}
+          </Card>
+        </div>
 
         {/* Validation Warnings */}
         {analysis?.validation_warnings && analysis.validation_warnings.length > 0 && (

@@ -11,6 +11,9 @@ import SubmissionDetailView from './pages/SubmissionDetailView';
 import Reports from './pages/Reports';
 import ClassList from './pages/ClassList';
 import StudentLogin from './pages/StudentLogin';
+import RubricCreation from './pages/RubricCreation';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import './App.css';
 
 
@@ -74,84 +77,96 @@ function App() {
           }
         >
           <Routes>
-          {/* Public Routes */}
-          <Route
-            path="/"
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            }
-          />
-          <Route path="/submit" element={<TokenBasedSubmission />} />
-          <Route path="/student/login" element={<StudentLogin />} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/auth/callback" element={<OAuthCallback />} />
+            {/* Public Routes */}
+            <Route
+              path="/"
+              element={
+                <PublicRoute>
+                  <Login />
+                </PublicRoute>
+              }
+            />
+            <Route path="/submit" element={<TokenBasedSubmission />} />
+            <Route path="/student/login" element={<StudentLogin />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/auth/callback" element={<OAuthCallback />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms-of-service" element={<TermsOfService />} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Dashboard />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/deliverables"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Deliverable />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/dashboard/folders" element={<Navigate to="/dashboard/deliverables" replace />} />
-          <Route
-            path="/dashboard/submissions"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Deliverable />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/submissions/:id"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <SubmissionDetailView />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
+            {/* Protected Routes */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Dashboard />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/deliverables"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Deliverable />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/dashboard/folders" element={<Navigate to="/dashboard/deliverables" replace />} />
+            <Route
+              path="/dashboard/submissions"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Deliverable />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/submissions/:id"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <SubmissionDetailView />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route
-            path="/dashboard/class-list"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <ClassList />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard/reports"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Reports />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
-          {/* Default redirect */}
+            <Route
+              path="/dashboard/class-list"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <ClassList />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/reports"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <Reports />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/rubrics"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <RubricCreation />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            {/* Default redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

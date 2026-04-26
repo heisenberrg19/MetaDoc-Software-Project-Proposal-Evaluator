@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { submissionAPI } from '../services/api';
 import axios from 'axios';
-import { Upload, FileText, CheckCircle, AlertCircle, X, Info, ArrowUp, Loader2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, X, Info, ArrowUp, Loader2 } from '../components/common/Icons';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
@@ -179,10 +179,13 @@ const TokenBasedSubmission = () => {
   // 1. Loading State
   if (authLoading || (isAuthenticated && checkingRegistration)) {
     return (
-      <div className="submit-page">
-        <div className="loading-container" style={{ textAlign: 'center', color: 'white' }}>
-          <div className="spinner" style={{ margin: '0 auto var(--spacing-md)' }}></div>
-          <p>Loading submission portal...</p>
+      <div className="submit-page portal-loading-screen">
+        <div className="portal-loading-container">
+          <div className="portal-loading-spinner-wrap">
+            <Loader2 className="portal-loading-spinner" size={48} />
+          </div>
+          <h2 className="portal-loading-title">MetaDoc</h2>
+          <p className="portal-loading-text">Preparing your submission portal...</p>
         </div>
       </div>
     );

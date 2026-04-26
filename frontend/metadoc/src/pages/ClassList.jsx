@@ -14,14 +14,24 @@ import {
     Plus,
     Save,
     X
-} from 'lucide-react';
+} from '../components/common/Icons';
 import { dashboardAPI } from '../services/api';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
+import { useLoadingState } from '../hooks/useLoadingState';
 import '../styles/ClassList.css';
+
+const formatStudentId = (input) => {
+    if (!input) return 'N/A';
+    const digits = input.replace(/\D/g, '').slice(0, 9);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 9)}`;
+};
 
 const ClassList = () => {
     const [loading, setLoading] = useState(false);
+    const { showLongLoading } = useLoadingState(loading);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState('none');
     const [teamCodeFilter, setTeamCodeFilter] = useState('none');
@@ -100,7 +110,8 @@ const ClassList = () => {
             setRowBackups({});
         } catch (err) {
             console.error('Failed to fetch students:', err);
-            setError(err.response?.data?.error || 'Failed to load student records.');
+            const errMsg = !err.response ? 'Failed to Connect to Server' : (err.response?.data?.error || 'Failed to load student records.');
+            setError(errMsg);
         } finally {
             setLoading(false);
         }
@@ -712,6 +723,16 @@ const ClassList = () => {
     const selectedFilteredIds = selectedFilteredRows.map((row) => row.id);
     const hasArchivedSelection = selectedFilteredRows.some((row) => row.isArchived);
 
+    if (error === 'Failed to Connect to Server' && classRows.length === 0) {
+        return (
+            <div className="dashboard-error" style={{ height: '70vh' }}>
+                <AlertCircle size={48} />
+                <h3>{error}</h3>
+                <p>Unable to load student records. Please check your backend connection and try again.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="class-record-page fade-in">
             <div className="class-record-header">
@@ -821,177 +842,206 @@ const ClassList = () => {
 
             <div className="cr-table-wrapper">
                 <div className="table-container">
-                            <table className="record-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: '40px' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={filteredRows.length > 0 && selectedFilteredIds.length === filteredRows.length}
-                                                onChange={() => {
-                                                    if (selectedFilteredIds.length === filteredRows.length) {
-                                                        setSelectedIds(prev => prev.filter(id => !filteredRowIds.includes(id)));
-                                                    } else {
-                                                        setSelectedIds(prev => [...new Set([...prev, ...filteredRowIds])]);
-                                                    }
-                                                }}
-                                                className="row-checkbox"
-                                            />
-                                        </th>
-                                        <th style={{ width: '40px' }}>No.</th>
-                                        {subjectFilter === 'All' && <th style={{ width: '90px' }}>SUBJECT NO.</th>}
-                                        <th>NAME OF STUDENT</th>
-                                        <th>STUDENT NO.</th>
-                                        <th>COURSE & YEAR</th>
-                                        <th>GMAIL</th>
-                                        <th>TEAM CODE</th>
-                                        <th className="status-column-header">STATUS</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(() => {
-                                        const rowNumberById = new Map(classRows.map((r, i) => [r.id, i + 1]));
-                                        if (classRows.length === 0) {
-                                            return (
-                                                <tr>
-                                                    <td colSpan={9} className="no-padding">
-                                                        <div className="empty-state-dashed-inline">
-                                                            <Users size={48} className="empty-icon-gray" />
-                                                            <h3>No Student Records</h3>
-                                                            <p>Import a class list to start managing student registrations.</p>
-                                                            <Button
-                                                                onClick={handleImportClick}
-                                                                variant="primary"
-                                                                size="small"
-                                                                icon={FileUp}
-                                                                disabled={loading}
-                                                            >
-                                                                {loading ? 'Importing...' : 'Import Record'}
-                                                            </Button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        }
+                    <table className="record-table">
+                        <thead>
+                            <tr>
+                                <th style={{ width: '40px' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={filteredRows.length > 0 && selectedFilteredIds.length === filteredRows.length}
+                                        onChange={() => {
+                                            if (selectedFilteredIds.length === filteredRows.length) {
+                                                setSelectedIds(prev => prev.filter(id => !filteredRowIds.includes(id)));
+                                            } else {
+                                                setSelectedIds(prev => [...new Set([...prev, ...filteredRowIds])]);
+                                            }
+                                        }}
+                                        className="row-checkbox"
+                                    />
+                                </th>
+                                <th style={{ width: '40px' }}>No.</th>
+                                {subjectFilter === 'All' && <th style={{ width: '90px' }}>SUBJECT NO.</th>}
+                                <th>NAME OF STUDENT</th>
+                                <th>STUDENT NO.</th>
+                                <th>COURSE & YEAR</th>
+                                <th>GMAIL</th>
+                                <th>TEAM CODE</th>
+                                <th className="status-column-header">STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(() => {
+                                const rowNumberById = new Map(classRows.map((r, i) => [r.id, i + 1]));
 
-                                        if (filteredRows.length === 0) {
-                                            return (
-                                                <tr>
-                                                    <td colSpan={9} className="search-no-results">
-                                                        <div className="no-match-message">
-                                                            <Search size={32} className="opacity-20" />
-                                                            {searchTerm.trim() ? (
-                                                                <>
-                                                                    <p>No student records match "<strong>{searchTerm}</strong>"</p>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="small"
-                                                                        onClick={() => setSearchTerm('')}
-                                                                    >
-                                                                        Clear Search
-                                                                    </Button>
-                                                                </>
-                                                            ) : (
-                                                                <p>No student records found for the current filters.</p>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        }
-
-                                        return filteredRows.map((row, index) => (
-                                            <tr key={row.id}>
-                                                <td>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedIds.includes(row.id)}
-                                                        onChange={() => handleToggleSelect(row.id)}
-                                                        className="row-checkbox"
-                                                    />
-                                                </td>
-                                                <td className="font-bold text-gray-500">
-                                                    {rowNumberById.get(row.id) ?? index + 1}
-                                                </td>
-                                                {subjectFilter === 'All' && (
-                                                    <td>
-                                                        {selectedIds.includes(row.id) ? (
-                                                            <input
-                                                                className="inline-edit-input font-bold"
-                                                                value={row.subjectNo || ''}
-                                                                onChange={(e) => handleRowChange(row.id, 'subjectNo', e.target.value)}
-                                                                onKeyDown={handleKeyPress}
-                                                            />
-                                                        ) : (
-                                                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f1f5f9', color: '#475569', fontWeight: '600' }}>
-                                                                {row.subjectNo || 'IT411'}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                )}
-                                                <td className="font-bold">
-                                                    {selectedIds.includes(row.id) ? (
-                                                        <input
-                                                            className="inline-edit-input font-bold"
-                                                            value={fullNameDrafts[row.id] ?? `${row.firstName} ${row.lastName}`.trim()}
-                                                            onChange={(e) => handleFullNameDraftChange(row.id, e.target.value)}
-                                                            onBlur={() => commitFullNameDraft(row.id)}
-                                                            onKeyDown={handleKeyPress}
-                                                        />
-                                                    ) : `${row.firstName} ${row.lastName}`.trim()}
-                                                </td>
-                                                <td className="font-mono text-gray-600">
-                                                    {selectedIds.includes(row.id) ? (
-                                                        <input
-                                                            className="inline-edit-input"
-                                                            value={row.studentId}
-                                                            onChange={(e) => handleRowChange(row.id, 'studentId', e.target.value)}
-                                                            onKeyDown={handleKeyPress}
-                                                        />
-                                                    ) : row.studentId}
-                                                </td>
-                                                <td className="font-mono text-gray-600">
-                                                    {selectedIds.includes(row.id) ? (
-                                                        <input
-                                                            className="inline-edit-input text-gray-800"
-                                                            value={row.courseYear}
-                                                            onChange={(e) => handleRowChange(row.id, 'courseYear', e.target.value)}
-                                                            onKeyDown={handleKeyPress}
-                                                        />
-                                                    ) : row.courseYear}
-                                                </td>
-                                                <td>
-                                                    {selectedIds.includes(row.id) ? (
-                                                        <input
-                                                            className="inline-edit-input text-blue-600"
-                                                            value={row.email}
-                                                            onChange={(e) => handleRowChange(row.id, 'email', e.target.value)}
-                                                            onKeyDown={handleKeyPress}
-                                                        />
-                                                    ) : (
-                                                        <span className="text-blue-600 underline">{row.email}</span>
-                                                    )}
-                                                </td>
-                                                <td className="font-mono font-bold text-maroon">
-                                                    {selectedIds.includes(row.id) ? (
-                                                        <input
-                                                            className="inline-edit-input text-maroon font-bold"
-                                                            value={row.teamCode}
-                                                            onChange={(e) => handleRowChange(row.id, 'teamCode', e.target.value)}
-                                                            onKeyDown={handleKeyPress}
-                                                        />
-                                                    ) : row.teamCode}
-                                                </td>
-                                                <td className="status-column-cell">
-                                                    <span className={`status-badge ${row.isArchived ? 'status-archived' : (row.status === 'Registered' || row.is_registered ? 'status-registered' : 'status-pending')}`}>
-                                                        {row.isArchived ? 'Restricted' : (row.status || (row.is_registered ? 'Registered' : 'Pending'))}
-                                                    </span>
+                                if (loading && classRows.length === 0) {
+                                    if (showLongLoading) {
+                                        return (
+                                            <tr>
+                                                <td colSpan="12" style={{ padding: '3rem 0' }}>
+                                                    <div className="spinner-container-maroon">
+                                                        <div className="spinner-maroon"></div>
+                                                        <p style={{ marginTop: '1rem', color: 'var(--color-maroon)', fontWeight: '600' }}>Loading Class List...</p>
+                                                    </div>
                                                 </td>
                                             </tr>
-                                        ));
-                                    })()}
-                                </tbody>
-                            </table>
+                                        );
+                                    }
+                                    return [...Array(10)].map((_, i) => (
+                                        <tr key={`skeleton-${i}`} className="skeleton-row">
+                                            <td><div className="skeleton skeleton-checkbox"></div></td>
+                                            <td><div className="skeleton" style={{ width: '20px', height: '20px' }}></div></td>
+                                            {subjectFilter === 'All' && <td><div className="skeleton skeleton-cell-sm" style={{ borderRadius: '12px' }}></div></td>}
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm"></div></td>
+                                            <td><div className="skeleton skeleton-cell-sm" style={{ width: '80px', height: '24px', borderRadius: '12px' }}></div></td>
+                                        </tr>
+                                    ));
+                                }
+
+                                if (classRows.length === 0) {
+                                    return (
+                                        <tr>
+                                            <td colSpan={9} className="no-padding">
+                                                <div className="empty-state-dashed-inline">
+                                                    <Users size={48} className="empty-icon-gray" />
+                                                    <h3>No Student Records</h3>
+                                                    <p>Import a class list to start managing student registrations.</p>
+                                                    <Button
+                                                        onClick={handleImportClick}
+                                                        variant="primary"
+                                                        size="small"
+                                                        icon={FileUp}
+                                                        disabled={loading}
+                                                    >
+                                                        {loading ? 'Importing...' : 'Import Record'}
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                if (filteredRows.length === 0) {
+                                    return (
+                                        <tr>
+                                            <td colSpan={9} className="search-no-results">
+                                                <div className="no-match-message">
+                                                    <Search size={32} className="opacity-20" />
+                                                    {searchTerm.trim() ? (
+                                                        <>
+                                                            <p>No student records match "<strong>{searchTerm}</strong>"</p>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="small"
+                                                                onClick={() => setSearchTerm('')}
+                                                            >
+                                                                Clear Search
+                                                            </Button>
+                                                        </>
+                                                    ) : (
+                                                        <p>No student records found for the current filters.</p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                return filteredRows.map((row, index) => (
+                                    <tr key={row.id}>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(row.id)}
+                                                onChange={() => handleToggleSelect(row.id)}
+                                                className="row-checkbox"
+                                            />
+                                        </td>
+                                        <td className="font-bold text-gray-500">
+                                            {rowNumberById.get(row.id) ?? index + 1}
+                                        </td>
+                                        {subjectFilter === 'All' && (
+                                            <td>
+                                                {selectedIds.includes(row.id) ? (
+                                                    <input
+                                                        className="inline-edit-input font-bold"
+                                                        value={row.subjectNo || ''}
+                                                        onChange={(e) => handleRowChange(row.id, 'subjectNo', e.target.value)}
+                                                        onKeyDown={handleKeyPress}
+                                                    />
+                                                ) : (
+                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', backgroundColor: '#f1f5f9', color: '#475569', fontWeight: '600' }}>
+                                                        {row.subjectNo || 'IT411'}
+                                                    </span>
+                                                )}
+                                            </td>
+                                        )}
+                                        <td className="font-bold">
+                                            {selectedIds.includes(row.id) ? (
+                                                <input
+                                                    className="inline-edit-input font-bold"
+                                                    value={fullNameDrafts[row.id] ?? `${row.firstName} ${row.lastName}`.trim()}
+                                                    onChange={(e) => handleFullNameDraftChange(row.id, e.target.value)}
+                                                    onBlur={() => commitFullNameDraft(row.id)}
+                                                    onKeyDown={handleKeyPress}
+                                                />
+                                            ) : `${row.firstName} ${row.lastName}`.trim()}
+                                        </td>
+                                        <td className="font-mono text-gray-600">
+                                            {selectedIds.includes(row.id) ? (
+                                                <input
+                                                    className="inline-edit-input"
+                                                    value={row.studentId}
+                                                    onChange={(e) => handleRowChange(row.id, 'studentId', e.target.value)}
+                                                    onKeyDown={handleKeyPress}
+                                                />
+                                            ) : row.studentId}
+                                        </td>
+                                        <td className="font-mono text-gray-600">
+                                            {selectedIds.includes(row.id) ? (
+                                                <input
+                                                    className="inline-edit-input text-gray-800"
+                                                    value={row.courseYear}
+                                                    onChange={(e) => handleRowChange(row.id, 'courseYear', e.target.value)}
+                                                    onKeyDown={handleKeyPress}
+                                                />
+                                            ) : row.courseYear}
+                                        </td>
+                                        <td>
+                                            {selectedIds.includes(row.id) ? (
+                                                <input
+                                                    className="inline-edit-input text-blue-600"
+                                                    value={row.email}
+                                                    onChange={(e) => handleRowChange(row.id, 'email', e.target.value)}
+                                                    onKeyDown={handleKeyPress}
+                                                />
+                                            ) : (
+                                                <span className="text-blue-600 underline">{row.email}</span>
+                                            )}
+                                        </td>
+                                        <td className="font-mono font-bold text-maroon">
+                                            {selectedIds.includes(row.id) ? (
+                                                <input
+                                                    className="inline-edit-input text-maroon font-bold"
+                                                    value={row.teamCode}
+                                                    onChange={(e) => handleRowChange(row.id, 'teamCode', e.target.value)}
+                                                    onKeyDown={handleKeyPress}
+                                                />
+                                            ) : row.teamCode}
+                                        </td>
+                                        <td className="status-column-cell">
+                                            <span className={`status-badge ${row.isArchived ? 'status-archived' : (row.status === 'Registered' || row.is_registered ? 'status-registered' : 'status-pending')}`}>
+                                                {row.isArchived ? 'Restricted' : (row.status || (row.is_registered ? 'Registered' : 'Pending'))}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ));
+                            })()}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -1006,8 +1056,8 @@ const ClassList = () => {
                             </button>
                         </div>
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.25rem' }}>
-                            <Button 
-                                variant="primary" 
+                            <Button
+                                variant="primary"
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
                                 onClick={() => {
                                     setIsActionModalOpen(false);
@@ -1017,8 +1067,8 @@ const ClassList = () => {
                                 <Users size={18} />
                                 Add Student
                             </Button>
-                            <Button 
-                                variant="outline" 
+                            <Button
+                                variant="outline"
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', border: '1px solid var(--color-gray-300)' }}
                                 onClick={() => {
                                     setIsActionModalOpen(false);
