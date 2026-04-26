@@ -328,7 +328,7 @@ class NLPService:
             
             user_prompt += "\n\nPlease provide a highly structured and detailed evaluation of the document based on the following criteria:"
             user_prompt += "\n1. **Executive Summary**: A concise summary of the project's core idea."
-            user_prompt += "\n2. **Contribution & Task Analysis**: Analyze the roles and contributions of the team members. Evaluate how the tasks are divided, who is doing what, and provide feedback on their workload distribution or AI Analysis & Evaluation."
+            user_prompt += "\n2. **Contribution & Task Analysis**: Analyze the roles and contributions of the team members. Evaluate how the tasks are divided, who is doing what, and provide feedback on their workload distribution."
             user_prompt += "\n3. **Scope & Viability**: Feedback on the project's realism and technical scope."
             user_prompt += "\n4. **Key Strengths & Improvements**: Actionable feedback for the team to improve."
 

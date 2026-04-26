@@ -111,7 +111,7 @@ const DashboardLayout = ({ children }) => {
     'Create deliverables and set deadlines in the Deliverables page to generate unique submission links for each specific requirement.',
     'Manage your student roster and monitor team assignments via the Class List page.',
     'Share the generated submission link with students. Links are automatically tied to the selected deliverable and expire after the deadline.',
-    'Review AI Analysis & Evaluation in the Reports page to view document metadata, AI-driven insights, and compliance checks.',
+    'Review Analysis & Evaluation based on Criteria in the Reports page to view document metadata, AI-driven insights, and compliance checks.',
     'Track overall progress, submission timeliness, and class metrics on the Dashboard Overview.',
   ];
 
@@ -122,7 +122,7 @@ const DashboardLayout = ({ children }) => {
     },
     {
       question: 'How does the system evaluate the submitted documents?',
-      answer: 'MetaDoc performs an AI Analysis & Evaluation on every submission, checking for proper metadata, formatting, and document structure, and providing AI-generated insights.',
+      answer: 'MetaDoc performs an Analysis & Evaluation based on Criteria on every submission, checking for proper metadata, formatting, and document structure, and providing AI-generated insights.',
     },
     {
       question: 'Where can I check if submissions are late or on time?',

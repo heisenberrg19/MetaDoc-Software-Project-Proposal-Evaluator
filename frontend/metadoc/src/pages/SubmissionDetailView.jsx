@@ -533,7 +533,7 @@ const SubmissionDetailView = () => {
             title={
               <div className="flex items-center gap-2">
                 <FileText size={20} />
-                <span>AI Analysis & Evaluation</span>
+                <span>Analysis & Evaluation based on Criteria</span>
               </div>
             }
             className="h-full"

@@ -141,15 +141,7 @@ const RubricEditorModal = ({ isOpen, onClose, rubricToEdit, onSave }) => {
             />
           </div>
 
-          <div className="form-group-v4">
-            <label>PROMPT MESSAGE</label>
-            <textarea
-              className="prompt-textarea-v4"
-              value={activeRubric.system_instructions || `Your primary objective is to evaluate the submission based on the provided criteria. Analyze the document deeply and provide critical, actionable feedback for each rubric point...`}
-              onChange={(e) => setActiveRubric({ ...activeRubric, system_instructions: e.target.value })}
-              rows={4}
-            />
-          </div>
+
 
           <div className="criteria-section-v4">
             <div className="criteria-header-v4">
