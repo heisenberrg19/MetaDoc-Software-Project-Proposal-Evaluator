@@ -245,22 +245,21 @@ class DriveService:
 
     def _get_gemini_model_name(self):
         """Resolve Gemini model name with a safe default."""
-        model_name = str(current_app.config.get('GEMINI_MODEL') or 'gemini-1.5-flash').strip()
-        # Auto-switch for potentially invalid future-dated strings
-        if '2.5' in model_name:
-             return 'gemini-1.5-flash'
-        return model_name
+        return str(current_app.config.get('GEMINI_MODEL') or 'gemini-1.5-flash').strip()
 
     def _get_gemini_model_candidates(self):
-        """Primary model plus automatic fallback model candidates."""
+        """Primary model plus automatic fallback model candidates from config list."""
         primary = self._get_gemini_model_name()
-        fallback = str(current_app.config.get('GEMINI_FALLBACK_MODEL') or 'gemini-1.5-flash').strip()
+        
+        # Get list of fallbacks from config
+        fallbacks = current_app.config.get('GEMINI_FALLBACK_MODELS')
+        if isinstance(fallbacks, str):
+            fallbacks = [f.strip() for f in fallbacks.split(',') if f.strip()]
+        elif not isinstance(fallbacks, list):
+            fallbacks = ['gemini-1.5-flash']
 
-        if '2.5' in fallback:
-            fallback = 'gemini-1.5-flash'
-
-        candidates = []
-        for item in [primary, fallback]:
+        candidates = [primary]
+        for item in fallbacks:
             if item and item not in candidates:
                 candidates.append(item)
         return candidates
