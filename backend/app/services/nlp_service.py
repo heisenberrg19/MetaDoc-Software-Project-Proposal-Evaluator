@@ -215,14 +215,14 @@ class NLPService:
                                     "resource exhausted" in error_str.lower() or
                                     "rate limit" in error_str.lower())
                     
-                    if is_quota_error:
+                    if is_quota_error or "404" in error_str:
                         retry_count += 1
                         if retry_count < max_retries_per_model:
                             import time
                             wait_time = 5 * (retry_count ** 2)  # Exponential backoff: 5s, 20s, 45s
                             if current_app:
                                 current_app.logger.warning(
-                                    f"Rate limit hit with {model_name}. "
+                                    f"{'Rate limit hit' if is_quota_error else 'Model not found (404)'} with {model_name}. "
                                     f"Retry {retry_count}/{max_retries_per_model} in {wait_time}s..."
                                 )
                             time.sleep(wait_time)
@@ -231,12 +231,12 @@ class NLPService:
                             # Max retries for this model exhausted, try next model
                             if current_app:
                                 current_app.logger.warning(
-                                    f"Max retries ({max_retries_per_model}) exhausted for {model_name}. "
+                                    f"Max retries ({max_retries_per_model}) exhausted or 404 error for {model_name}. "
                                     f"Trying next model..."
                                 )
                             break
                     else:
-                        # Non-quota error, return immediately
+                        # Non-quota/non-404 error, return immediately
                         if current_app:
                             current_app.logger.error(f"Gemini error with {model_name}: {error_str}")
                         return None, model_name, str(e)
