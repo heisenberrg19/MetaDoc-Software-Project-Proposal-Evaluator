@@ -562,6 +562,16 @@ def upload_file():
         student_id = student.student_id
         student_name = f"{student.first_name} {student.last_name}"
         
+        # [SECURITY FIX] Rate Limiting: Prevent DoS & API Quota Exhaustion
+        from datetime import timedelta
+        recent_submission = Submission.query.filter(
+            Submission.student_id == student_id,
+            Submission.professor_id == professor_id,
+            Submission.created_at > datetime.utcnow() - timedelta(seconds=30)
+        ).first()
+        if recent_submission:
+            return jsonify({'error': 'Rate limit exceeded. Please wait 30 seconds before submitting another file.'}), 429
+        
         # Validate request
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -784,6 +794,16 @@ def submit_drive_link():
         # Override with official class record info
         student_id = student.student_id
         student_name = f"{student.first_name} {student.last_name}"
+        
+        # [SECURITY FIX] Rate Limiting: Prevent DoS & API Quota Exhaustion
+        from datetime import timedelta
+        recent_submission = Submission.query.filter(
+            Submission.student_id == student_id,
+            Submission.professor_id == professor_id,
+            Submission.created_at > datetime.utcnow() - timedelta(seconds=30)
+        ).first()
+        if recent_submission:
+            return jsonify({'error': 'Rate limit exceeded. Please wait 30 seconds before submitting another file.'}), 429
         
         # Validate drive link format
         file_id, validation_error = submission_service.validate_drive_link(drive_link)
