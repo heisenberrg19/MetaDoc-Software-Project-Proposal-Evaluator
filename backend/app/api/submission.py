@@ -826,8 +826,8 @@ def submit_drive_link():
             else:
                 return jsonify({'error': error['message']}), 400
         
-        # Validate file type from metadata
-        if metadata['mimeType'] not in submission_service.allowed_mime_types:
+        # Validate file type from metadata (if available)
+        if metadata.get('mimeType') and metadata['mimeType'] not in submission_service.allowed_mime_types:
             return jsonify({
                 'error': f"Unsupported file type: {metadata['mimeType']}"
             }), 415
@@ -933,6 +933,11 @@ def submit_drive_link():
         # Get file modification time from Drive metadata
         file_modified_at = _parse_iso_datetime(metadata.get('modifiedTime'))
 
+        # Guess MIME type if missing (fallback for public downloads)
+        mime_type = metadata.get('mimeType')
+        if not mime_type:
+            mime_type = mimetypes.guess_type(storage_path)[0] or 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
         # Create submission record
         submission, error = submission_service.create_submission_record(
             file_name=filename,
@@ -940,7 +945,7 @@ def submit_drive_link():
             file_path=storage_path,
             file_size=file_size,
             file_hash=file_hash,
-            mime_type=metadata['mimeType'],
+            mime_type=mime_type,
             file_modified_at=file_modified_at,
             submitted_at=datetime.utcnow(),
             submission_type='drive_link',

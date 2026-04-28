@@ -131,7 +131,7 @@ class DriveService:
                 return {
                     'id': file_id,
                     'name': file_name,
-                    'mimeType': 'application/vnd.google-apps.document' 
+                    'mimeType': None # Don't assume, let download_file try multiple methods
                 }, None
             
             # Get file metadata
@@ -214,14 +214,20 @@ class DriveService:
             try:
                 current_app.logger.info(f"Attempting public download fallback for {file_id}")
                 
-                # Construct export URL for Docs or direct link for files
-                if mime_type == 'application/vnd.google-apps.document':
-                    url = f"https://docs.google.com/document/d/{file_id}/export?format=docx"
-                else:
-                    url = f"https://drive.google.com/uc?id={file_id}&export=download"
+                # Try export URL (for Google Docs)
+                url_export = f"https://docs.google.com/document/d/{file_id}/export?format=docx"
+                # Try direct download URL (for binary files like .docx)
+                url_direct = f"https://drive.google.com/uc?id={file_id}&export=download"
                 
                 import requests
-                response = requests.get(url, allow_redirects=True)
+                
+                # First attempt: Export (likely a Google Doc)
+                response = requests.get(url_export, allow_redirects=True, timeout=10)
+                
+                if response.status_code != 200:
+                    current_app.logger.info(f"Export failed (status {response.status_code}), trying direct download for {file_id}")
+                    # Second attempt: Direct download (likely a binary docx)
+                    response = requests.get(url_direct, allow_redirects=True, timeout=10)
                 
                 if response.status_code == 200:
                     # Save to temporary storage
