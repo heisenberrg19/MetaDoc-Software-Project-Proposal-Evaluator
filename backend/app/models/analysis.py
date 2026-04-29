@@ -34,6 +34,11 @@ class AnalysisResult(BaseModel):
     ai_summary = db.Column(Text, nullable=True)
     ai_insights = db.Column(JSON, nullable=True)
     
+    # Rubric evaluation tracking (for caching/reuse optimization)
+    last_evaluated_rubric_id = db.Column(db.String(36), nullable=True)
+    last_evaluated_rubric_criteria_hash = db.Column(db.String(64), nullable=True)
+    last_evaluation_timestamp = db.Column(db.DateTime, nullable=True)
+    
     # Validation flags
     is_complete_document = db.Column(db.Boolean, default=True)
     validation_warnings = db.Column(JSON, nullable=True)

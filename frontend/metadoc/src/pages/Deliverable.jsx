@@ -22,7 +22,8 @@ import {
   Plus,
   CheckCircle,
   ClipboardList,
-  AlertCircle
+  AlertCircle,
+  Info
 } from '../components/common/Icons';
 import '../styles/Deliverable.css';
 import '../styles/RubricCreation.css';
@@ -145,6 +146,7 @@ const Deliverable = () => {
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [selectedDescription, setSelectedDescription] = useState({ title: '', content: '' });
   const [isRubricModalOpen, setIsRubricModalOpen] = useState(false);
+  const [rubricToEdit, setRubricToEdit] = useState(null);
 
   const teamCodeOptions = [...new Set(
     students
@@ -289,6 +291,7 @@ const Deliverable = () => {
     setEditingFolder(null);
     setFolderFormData({ title: '', description: '', deadline_datetime: '', rubric_id: '' });
     setFolderFormError(null);
+    setRubricToEdit(null);
     setShowFolderModal(true);
   };
 
@@ -310,6 +313,7 @@ const Deliverable = () => {
       rubric_id: folder.rubric_id || '',
     });
     setFolderFormError(null);
+    setRubricToEdit(null);
     setShowFolderModal(true);
   };
 
@@ -322,6 +326,11 @@ const Deliverable = () => {
 
     if (selectedDate <= now) {
       setFolderFormError('Deadline cannot be set to a past date or current time. Please select a future date and time.');
+      return;
+    }
+
+    if (!folderFormData.rubric_id) {
+      setFolderFormError('Please select an evaluation rubric for this deliverable.');
       return;
     }
 
@@ -1183,11 +1192,11 @@ const Deliverable = () => {
 
             <form onSubmit={handleFolderSubmit}>
               {folderFormError && (
-                <div className="alert alert-error">
-                  <AlertTriangle size={20} />
-                  <span>{folderFormError}</span>
-                </div>
-              )}
+              <div className="alert alert-danger folder-form-alert">
+                <Info size={20} />
+                {folderFormError}
+              </div>
+            )}
 
               <div className="form-group folder-form-group">
                 <label className="folder-form-label" htmlFor="title">TITLE *</label>
@@ -1230,38 +1239,62 @@ const Deliverable = () => {
 
               <div className="form-group folder-form-group">
                 <label className="folder-form-label" htmlFor="rubric_id">EVALUATION RUBRIC</label>
-                <select
-                  id="rubric_id"
-                  className="form-control"
-                  value={folderFormData.rubric_id}
-                  onChange={(e) => {
-                    if (e.target.value === 'CREATE_NEW') {
-                      setIsRubricModalOpen(true);
-                      return;
-                    }
-                    setFolderFormData({ ...folderFormData, rubric_id: e.target.value });
-                  }}
-                >
-                  {rubrics.length > 0 ? (
-                    <>
-                      <option value="">No Rubric Selected</option>
-                      {rubrics.map(r => (
-                        <option key={r.id} value={r.id}>{r.name}</option>
-                      ))}
-                      <option value="CREATE_NEW" style={{ fontWeight: 'bold', color: 'var(--color-maroon)' }}>+ Create New Rubric</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="">No Rubrics Found</option>
-                      <option value="CREATE_NEW">+ Create New Rubric</option>
-                    </>
-                  )}
-                </select>
-                <small className="form-text">
-                  {rubrics.length === 0
-                    ? 'No rubrics found. Click to create one.'
-                    : 'Select a rubric or create a new one.'}
-                </small>
+                {editingFolder ? (
+                  <div className="folder-form-readonly">
+                    <div className="folder-form-readonly-content">
+                      <ClipboardList size={18} />
+                      <span>{rubrics.find(r => r.id === folderFormData.rubric_id)?.name || 'Rubric Assigned'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-change-rubric"
+                      onClick={() => {
+                        const currentRubric = rubrics.find(r => r.id === folderFormData.rubric_id);
+                        if (currentRubric) {
+                          setRubricToEdit(currentRubric);
+                          setIsRubricModalOpen(true);
+                        }
+                      }}
+                    >
+                      Manage
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      id="rubric_id"
+                      className={`form-control ${folderFormError && !folderFormData.rubric_id ? 'has-error' : ''}`}
+                      value={folderFormData.rubric_id}
+                      onChange={(e) => {
+                        if (e.target.value === 'CREATE_NEW') {
+                          setIsRubricModalOpen(true);
+                          return;
+                        }
+                        setFolderFormData({ ...folderFormData, rubric_id: e.target.value });
+                      }}
+                    >
+                      {rubrics.length > 0 ? (
+                        <>
+                          <option value="">No Rubric Selected</option>
+                          {rubrics.map(r => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                          <option value="CREATE_NEW" style={{ fontWeight: 'bold', color: 'var(--color-maroon)' }}>+ Create New Rubric</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="">No Rubrics Found</option>
+                          <option value="CREATE_NEW">+ Create New Rubric</option>
+                        </>
+                      )}
+                    </select>
+                    <small className="form-text">
+                      {rubrics.length === 0
+                        ? 'No rubrics found. Click to create one.'
+                        : 'Select a rubric or create a new one.'}
+                    </small>
+                  </>
+                )}
               </div>
 
               <div className="folder-form-footer">
@@ -1300,21 +1333,32 @@ const Deliverable = () => {
 
       <RubricEditorModal
         isOpen={isRubricModalOpen}
-        onClose={() => setIsRubricModalOpen(false)}
+        onClose={() => {
+          setIsRubricModalOpen(false);
+          setRubricToEdit(null);
+        }}
+        rubricToEdit={rubricToEdit}
         onSave={async (newRubric) => {
           try {
-            const response = await rubricAPI.createRubric(newRubric);
-            const savedRubric = response.data;
-            setRubrics(prev => [...prev, savedRubric]);
-            setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+            if (rubricToEdit) {
+              // Update existing rubric
+              const response = await rubricAPI.updateRubric(rubricToEdit.id, newRubric);
+              const updatedRubric = response.data;
+              setRubrics(prev => prev.map(r => r.id === updatedRubric.id ? updatedRubric : r));
+            } else {
+              // Create new rubric
+              const response = await rubricAPI.createRubric(newRubric);
+              const savedRubric = response.data;
+              setRubrics(prev => [...prev, savedRubric]);
+              setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+            }
             setIsRubricModalOpen(false);
+            setRubricToEdit(null);
           } catch (err) {
-            console.error("Failed to save new rubric from Deliverable view", err);
-            // Fallback
-            const localRubric = { ...newRubric, id: `local-${Date.now()}` };
-            setRubrics(prev => [...prev, localRubric]);
-            setFolderFormData(prev => ({ ...prev, rubric_id: localRubric.id }));
+            console.error("Failed to save rubric from Deliverable view", err);
+            // Local fallback logic (optional, keeping it simple for now)
             setIsRubricModalOpen(false);
+            setRubricToEdit(null);
           }
         }}
       />

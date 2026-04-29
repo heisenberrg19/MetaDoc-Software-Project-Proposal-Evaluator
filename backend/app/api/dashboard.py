@@ -210,8 +210,14 @@ def _refresh_drive_submission_analysis(submission, force_refresh=False):
     analysis.nlp_results = {}
     analysis.ai_insights = {}
     analysis.ai_summary = None
+    
+    # Clear rubric evaluation cache to ensure re-evaluation on next evaluation request
+    analysis.last_evaluated_rubric_id = None
+    analysis.last_evaluated_rubric_criteria_hash = None
+    analysis.last_evaluation_timestamp = None
+    
     analysis.updated_at = datetime.utcnow()
-    current_app.logger.info(f"AI Evaluation reset for submission {submission.id} due to document change")
+    current_app.logger.info(f"AI Evaluation and rubric cache reset for submission {submission.id} due to document change")
 
     submission.file_path = target_path
     submission.file_size = os.path.getsize(target_path) if os.path.exists(target_path) else submission.file_size

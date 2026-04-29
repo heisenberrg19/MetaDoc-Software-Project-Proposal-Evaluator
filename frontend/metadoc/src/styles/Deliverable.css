@@ -1611,6 +1611,27 @@
   padding: 1.2rem 1.5rem 0;
 }
 
+.folder-form-alert {
+  background-color: #fff9fa;
+  border: 1px solid rgba(128, 0, 32, 0.15);
+  color: #800020;
+  border-left: 4px solid #800020;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.folder-form-alert svg {
+  color: #800020;
+  flex-shrink: 0;
+}
+
 .folder-form-group {
   padding: 0;
   margin: 0 0 1rem;
@@ -1672,12 +1693,89 @@
   line-height: 1.5;
 }
 
+.folder-form-readonly {
+  width: 100%;
+  font-size: 0.95rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #4b5563;
+  background-color: #f9fafb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 500;
+  cursor: default;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.folder-form-readonly:hover {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.folder-form-readonly-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.folder-form-readonly svg {
+  color: #800020;
+  flex-shrink: 0;
+}
+
+.btn-change-rubric {
+  background-color: #fff;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(5px);
+}
+
+.folder-form-readonly:hover .btn-change-rubric {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.btn-change-rubric:hover {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.folder-form-modal .form-control.has-error {
+  border-color: #ef4444;
+  background-color: #fffdfd;
+}
+
+.folder-form-modal .form-control.has-error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
 .folder-form-modal small.form-text {
   display: block;
   margin-top: 0.4rem;
   color: #6b7280;
   font-size: 0.79rem;
   line-height: 1.35;
+  transition: color 0.2s;
+}
+
+.folder-form-modal small.form-text.text-error {
+  color: #ef4444;
+  font-weight: 500;
 }
 
 .folder-form-footer {

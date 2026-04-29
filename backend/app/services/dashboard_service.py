@@ -8,12 +8,48 @@ from datetime import datetime, timedelta
 from flask import current_app
 from sqlalchemy import desc, and_
 import pytz
+import json
+import hashlib
 
 from app.core.extensions import db
 from app.models import (
     Submission, AnalysisResult, Deadline, DocumentSnapshot,
     SubmissionStatus, TimelinessClassification, Student, SubmissionToken, User, UserRole
 )
+
+
+def compute_rubric_criteria_hash(rubric_data):
+    """
+    Compute a SHA256 hash of rubric criteria and prompt message for change detection.
+    
+    This hash is used to detect if the actual evaluation criteria or AI prompt message 
+    have changed, independent of metadata like name or description.
+    
+    Args:
+        rubric_data: Dictionary containing 'criteria' and 'ai_prompt_message'
+        
+    Returns:
+        SHA256 hash string of the criteria and prompt message combined
+    """
+    try:
+        # Extract criteria and prompt message
+        criteria = rubric_data.get('criteria', []) if isinstance(rubric_data, dict) else []
+        prompt_message = rubric_data.get('ai_prompt_message', '') if isinstance(rubric_data, dict) else ''
+        
+        # Create a dictionary with both to ensure consistent hashing
+        hash_data = {
+            'criteria': criteria,
+            'ai_prompt_message': prompt_message
+        }
+        
+        # Normalize to JSON for consistent hashing
+        hash_json = json.dumps(hash_data, sort_keys=True, default=str)
+        criteria_hash = hashlib.sha256(hash_json.encode()).hexdigest()
+        return criteria_hash
+    except Exception as e:
+        current_app.logger.error(f"Error computing rubric criteria hash: {e}")
+        return None
+        return None
 
 
 class DashboardService:
@@ -837,7 +873,15 @@ class DashboardService:
             return None, str(e)
 
     def evaluate_submission(self, submission_id, user_id, rubric_data):
-        """Perform AI evaluation of a submission using a provided rubric"""
+        """
+        Perform AI evaluation of a submission using a provided rubric.
+        
+        Optimization: If only the rubric name/description changed (but not the criteria),
+        reuse the existing evaluation instead of re-evaluating with AI.
+        
+        Auto-invalidation: If the submitted file has been edited/modified since the last 
+        evaluation, the cache is automatically cleared and a new evaluation is performed.
+        """
         try:
             submission = Submission.query.filter_by(
                 id=submission_id,
@@ -850,46 +894,106 @@ class DashboardService:
             if not submission.analysis_result or not submission.analysis_result.document_text:
                 return None, "Document content not available for analysis. Please refresh the submission first."
             
-            from app.services.nlp_service import NLPService
-            nlp_service = NLPService()
+            analysis = submission.analysis_result
             
-            context = {
-                'assignment_type': submission.deadline.assignment_type if submission.deadline else 'Project',
-                'title': submission.deadline.title if submission.deadline else 'Untitled Submission',
-                'course_code': submission.deadline.course_code if submission.deadline else 'N/A',
-                'description': submission.deadline.description if submission.deadline else 'No specific description provided.'
-            }
+            # Check if file has been modified since last evaluation (auto-invalidate cache)
+            file_modification_detected = False
+            if analysis.last_evaluation_timestamp and submission.file_modified_at:
+                # File has been edited after the last evaluation
+                if submission.file_modified_at > analysis.last_evaluation_timestamp:
+                    file_modification_detected = True
+                    current_app.logger.info(
+                        f"File modification detected for submission {submission_id}. "
+                        f"File modified at: {submission.file_modified_at}, "
+                        f"Last evaluation: {analysis.last_evaluation_timestamp}. "
+                        f"Clearing cache to trigger re-evaluation."
+                    )
+                    # Invalidate the cache by clearing tracking fields
+                    analysis.last_evaluated_rubric_id = None
+                    analysis.last_evaluated_rubric_criteria_hash = None
+                    analysis.last_evaluation_timestamp = None
             
-            # Add contributor metadata and identify submitter for collaborative analysis
-            if submission.analysis_result.document_metadata:
-                contributors = submission.analysis_result.document_metadata.get('contributors', [])
-                
-                # Identify the submitter in the contributors list for AI scoring
-                submitter_email = None
-                from app.models.student import Student
-                student = Student.query.filter_by(student_id=submission.student_id, professor_id=user_id).first()
-                if student and student.email:
-                    submitter_email = student.email.lower()
-                
-                for c in contributors:
-                    c_email = str(c.get('email', '')).lower()
-                    if submitter_email and c_email == submitter_email:
-                        c['is_submitter'] = True
-                
-                context['contributors'] = contributors
-                context['submitter_email'] = submitter_email
-                context['image_density_warning'] = submission.analysis_result.document_metadata.get('image_density_warning', False)
-                context['image_count'] = submission.analysis_result.document_metadata.get('image_count', 0)
+            # Compute hash of current rubric criteria and prompt message
+            current_criteria_hash = compute_rubric_criteria_hash(rubric_data)
+            rubric_id = rubric_data.get('id')
             
-            evaluation, model_used, error = nlp_service.evaluate_with_rubric(
-                submission.analysis_result.document_text,
-                rubric_data,
-                submission_context=context
-            )
-            
-            if error:
-                return None, error
+            # Check if we can reuse existing evaluation (same rubric criteria and prompt, AND file not modified)
+            if (not file_modification_detected and
+                analysis.last_evaluated_rubric_id == rubric_id and 
+                analysis.last_evaluated_rubric_criteria_hash == current_criteria_hash and
+                analysis.ai_insights and
+                isinstance(analysis.ai_insights, dict)):
                 
+                # Reuse existing evaluation - criteria, prompt, and file haven't changed
+                evaluation = analysis.ai_insights
+                current_app.logger.info(
+                    f"Reusing cached evaluation for submission {submission_id} "
+                    f"with rubric {rubric_id} (criteria, prompt message, and file content unchanged)"
+                )
+            else:
+                # File modified, criteria/prompt changed, or no previous evaluation - perform new evaluation
+                reason = []
+                if file_modification_detected:
+                    reason.append("file modified")
+                if analysis.last_evaluated_rubric_id != rubric_id:
+                    reason.append("different rubric")
+                if analysis.last_evaluated_rubric_criteria_hash != current_criteria_hash:
+                    reason.append("criteria or prompt changed")
+                if not analysis.ai_insights:
+                    reason.append("no previous evaluation")
+                
+                reason_text = " or ".join(reason) if reason else "unknown reason"
+                
+                from app.services.nlp_service import NLPService
+                nlp_service = NLPService()
+                
+                context = {
+                    'assignment_type': submission.deadline.assignment_type if submission.deadline else 'Project',
+                    'title': submission.deadline.title if submission.deadline else 'Untitled Submission',
+                    'course_code': submission.deadline.course_code if submission.deadline else 'N/A',
+                    'description': submission.deadline.description if submission.deadline else 'No specific description provided.'
+                }
+                
+                # Add contributor metadata and identify submitter for collaborative analysis
+                if analysis.document_metadata:
+                    contributors = analysis.document_metadata.get('contributors', [])
+                    
+                    # Identify the submitter in the contributors list for AI scoring
+                    submitter_email = None
+                    from app.models.student import Student
+                    student = Student.query.filter_by(student_id=submission.student_id, professor_id=user_id).first()
+                    if student and student.email:
+                        submitter_email = student.email.lower()
+                    
+                    for c in contributors:
+                        c_email = str(c.get('email', '')).lower()
+                        if submitter_email and c_email == submitter_email:
+                            c['is_submitter'] = True
+                    
+                    context['contributors'] = contributors
+                    context['submitter_email'] = submitter_email
+                    context['image_density_warning'] = analysis.document_metadata.get('image_density_warning', False)
+                    context['image_count'] = analysis.document_metadata.get('image_count', 0)
+                
+                evaluation, model_used, error = nlp_service.evaluate_with_rubric(
+                    analysis.document_text,
+                    rubric_data,
+                    submission_context=context
+                )
+                
+                if error:
+                    return None, error
+                
+                # Update rubric tracking fields
+                analysis.last_evaluated_rubric_id = rubric_id
+                analysis.last_evaluated_rubric_criteria_hash = current_criteria_hash
+                analysis.last_evaluation_timestamp = datetime.utcnow()
+                
+                current_app.logger.info(
+                    f"Performed new evaluation for submission {submission_id} "
+                    f"with rubric {rubric_id} ({reason_text})"
+                )
+            
             # Recalculate total weighted score based on rubric weights with fuzzy matching
             try:
                 criteria_list = rubric_data.get('criteria', [])
@@ -920,7 +1024,6 @@ class DashboardService:
                 current_app.logger.warning(f"Score recalculation failed: {math_err}")
                 
             # Update the analysis result with AI evaluation
-            analysis = submission.analysis_result
             analysis.ai_summary = evaluation.get('ai_summary')
             
             # MERGE into nlp_results instead of overwriting to prevent data loss 
@@ -948,6 +1051,11 @@ class DashboardService:
             
             db.session.commit()
             return evaluation, None
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"AI Evaluation error: {e}")
+            return None, str(e)
             
         except Exception as e:
             db.session.rollback()
