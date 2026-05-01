@@ -45,6 +45,9 @@ const ClassList = () => {
     const [rowBackups, setRowBackups] = useState({});
     const [confirmModal, setConfirmModal] = useState(null);
 
+    // Bulk Edit Modal state
+    const [bulkEditModal, setBulkEditModal] = useState({ isOpen: false, column: null, value: '', columnLabel: '' });
+
     // Modal state
     const [isActionModalOpen, setIsActionModalOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -126,18 +129,24 @@ const ClassList = () => {
         const file = fileInput.files[0];
         if (!file) return;
 
+        // Try to extract subject from filename (e.g., "IT332-Team Formation...")
+        const fileNameMatch = file.name.match(/([A-Z]{2,}\d{3})/i);
+        const fileNameSubject = fileNameMatch ? fileNameMatch[1].toUpperCase() : null;
+
         const reader = new FileReader();
+
         reader.onload = async (event) => {
             const text = event.target.result;
             const rows = text.split('\n');
             const parsedRows = rows.map(r => r.split(',').map(s => s.trim()));
+
 
             let headerRowIdx = -1;
             let headers = [];
 
             for (let i = 0; i < parsedRows.length; i++) {
                 const rowUpper = parsedRows[i].map(c => c.toUpperCase());
-                if (rowUpper.some(h => h.includes('STUDENT NO') || h.includes('STUDENT ID'))) {
+                if (rowUpper.some(h => h.includes('STUDENT ID') || h.includes('STUDENT NO'))) {
                     headerRowIdx = i;
                     headers = parsedRows[i].map(h => h.toLowerCase());
                     break;
@@ -146,12 +155,25 @@ const ClassList = () => {
 
             if (headerRowIdx === -1) {
                 headerRowIdx = 0;
-                headers = parsedRows[0].map(h => h.toLowerCase());
+                headers = (parsedRows[0] || []).map(h => h.toLowerCase());
             }
 
-            let fileSubjectNo = 'IT411';
+            let fileSubjectNo = fileNameSubject || 'IT411';
             for (let i = 0; i <= headerRowIdx; i++) {
+                if (!parsedRows[i]) continue;
                 const rowLower = parsedRows[i].map(c => c.toLowerCase());
+                
+                // Check for 'enrolled in' format
+                const enrolledCell = parsedRows[i].find(c => c.toLowerCase().includes('enrolled in'));
+                if (enrolledCell) {
+                    const match = enrolledCell.match(/enrolled in\s+([a-zA-Z0-9\s]+?)(?:\s*-|\s*only|$)/i);
+                    if (match && match[1]) {
+                        fileSubjectNo = match[1].trim().toUpperCase();
+                        break;
+                    }
+                }
+
+                // Check for 'subject no' format
                 const subjLabelIdx = rowLower.findIndex(c => c.includes('subject no'));
                 if (subjLabelIdx !== -1) {
                     if (i > 0 && parsedRows[i - 1][subjLabelIdx]) {
@@ -161,24 +183,24 @@ const ClassList = () => {
                 }
             }
 
-            const idIdx = headers.findIndex(h => h.includes('id') || h.includes('student no'));
+            const idIdx = headers.findIndex(h => h.includes('id') || h.includes('student id') || h.includes('student no'));
             const nameIdx = headers.findIndex(h => h.includes('name of student') || h.includes('name'));
-            const lastIdx = headers.findIndex(h => h === 'last name' || h.includes('surname'));
-            const firstIdx = headers.findIndex(h => h === 'first name' || h.includes('given'));
+            const lastIdx = headers.findIndex(h => h === 'last name' || h.includes('surname') || h === 'lastname');
+            const firstIdx = headers.findIndex(h => h === 'first name' || h.includes('given') || h === 'firstname');
             const courseIdx = headers.findIndex(h => h.includes('course') || h.includes('year'));
-            const emailIdx = headers.findIndex(h => h.includes('gmail') || h.includes('email'));
+            const emailIdx = headers.findIndex(h => h.includes('gmail') || h.includes('email') || h.includes('cit.edu'));
             const teamIdx = headers.findIndex(h => h.includes('team') || h.includes('group') || h.includes('code'));
             const subjIdx = headers.findIndex(h => h.includes('subj') || h.includes('subject'));
 
             if (idIdx === -1) {
-                setError('CSV must contain a "STUDENT NO." or ID column.');
+                setError(`File must contain a "STUDENT ID" or "ID" column.`);
                 return;
             }
 
             const students = [];
             for (let i = headerRowIdx + 1; i < parsedRows.length; i++) {
                 const row = parsedRows[i];
-                if (row.length < 2) continue;
+                if (!row || row.length < 2) continue;
 
                 const studentId = row[idIdx];
                 if (!studentId) continue;
@@ -211,7 +233,7 @@ const ClassList = () => {
                 setError(null);
                 await dashboardAPI.importDeadlineStudents(students);
                 await fetchStudents();
-                setSuccessMessage('Class list imported successfully.');
+                setSuccessMessage(`Class list imported successfully.`);
             } catch (err) {
                 console.error('Import failed:', err);
                 setError(err.response?.data?.error || 'Failed to import student record.');
@@ -220,7 +242,39 @@ const ClassList = () => {
                 fileInput.value = ''; // Reset input to allow selecting the same file again
             }
         };
+
         reader.readAsText(file);
+    };
+
+    const handleColumnHeaderClick = (columnKey, columnLabel) => {
+        if (selectedIds.length > 0) {
+            setBulkEditModal({ isOpen: true, column: columnKey, value: '', columnLabel });
+        }
+    };
+
+    const handleBulkEditConfirm = () => {
+        if (!bulkEditModal.column) return;
+        
+        setRowBackups(prev => {
+            const next = { ...prev };
+            let changed = false;
+            classRows.forEach(row => {
+                if (selectedIds.includes(row.id) && !next[row.id]) {
+                    next[row.id] = { ...row };
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+
+        setClassRows(prevRows => prevRows.map(row => {
+            if (selectedIds.includes(row.id)) {
+                return { ...row, [bulkEditModal.column]: bulkEditModal.value };
+            }
+            return row;
+        }));
+        
+        setBulkEditModal({ isOpen: false, column: null, value: '', columnLabel: '' });
     };
 
     const handleToggleSelect = (id) => {
@@ -314,7 +368,7 @@ const ClassList = () => {
         const fullName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
         const parts = [];
 
-        if (student.studentId) parts.push(`Student No. ${student.studentId}`);
+        if (student.studentId) parts.push(`Student ID ${student.studentId}`);
         if (fullName) parts.push(`Name ${fullName}`);
         if (student.courseYear) parts.push(`Course & Year ${student.courseYear}`);
         if (student.subjectNo) parts.push(`Subject No. ${student.subjectNo}`);
@@ -334,7 +388,7 @@ const ClassList = () => {
             : `${currentRow?.firstName || ''} ${currentRow?.lastName || ''}`.trim();
 
         if ((currentRow?.studentId || '') !== (originalRow?.studentId || '')) {
-            changes.push(`Student No. ${currentRow?.studentId || ''}`.trim());
+            changes.push(`Student ID ${currentRow?.studentId || ''}`.trim());
         }
 
         if (currentFullName !== originalFullName) {
@@ -367,7 +421,7 @@ const ClassList = () => {
 
         const items = savedItems.map(({ row, backup, parsedName }) => {
             const changes = buildUpdatedFieldsSummary(row, backup, parsedName);
-            return changes.length > 0 ? changes.join(', ') : `Student No. ${row.studentId}`;
+            return changes.length > 0 ? changes.join(', ') : `Student ID ${row.studentId}`;
         });
 
         return savedItems.length === 1
@@ -860,12 +914,36 @@ const ClassList = () => {
                                     />
                                 </th>
                                 <th style={{ width: '40px' }}>No.</th>
-                                {subjectFilter === 'All' && <th style={{ width: '90px' }}>SUBJECT NO.</th>}
+                                {subjectFilter === 'All' && (
+                                    <th 
+                                        style={{ 
+                                            width: '90px', 
+                                            cursor: selectedIds.length > 0 ? 'pointer' : 'default', 
+                                            color: selectedIds.length > 0 ? '#800000' : 'inherit'
+                                        }}
+                                        onClick={() => handleColumnHeaderClick('subjectNo', 'SUBJECT NO.')}
+                                        title={selectedIds.length > 0 ? "Click to bulk edit Subject No." : ""}
+                                    >SUBJECT NO.</th>
+                                )}
                                 <th>NAME OF STUDENT</th>
-                                <th>STUDENT NO.</th>
-                                <th>COURSE & YEAR</th>
+                                <th>STUDENT ID</th>
+                                <th 
+                                    style={{ 
+                                        cursor: selectedIds.length > 0 ? 'pointer' : 'default', 
+                                        color: selectedIds.length > 0 ? '#800000' : 'inherit'
+                                    }}
+                                    onClick={() => handleColumnHeaderClick('courseYear', 'COURSE & YEAR')}
+                                    title={selectedIds.length > 0 ? "Click to bulk edit Course & Year" : ""}
+                                >COURSE & YEAR</th>
                                 <th>GMAIL</th>
-                                <th>TEAM CODE</th>
+                                <th 
+                                    style={{ 
+                                        cursor: selectedIds.length > 0 ? 'pointer' : 'default', 
+                                        color: selectedIds.length > 0 ? '#800000' : 'inherit'
+                                    }}
+                                    onClick={() => handleColumnHeaderClick('teamCode', 'TEAM CODE')}
+                                    title={selectedIds.length > 0 ? "Click to bulk edit Team Code" : ""}
+                                >TEAM CODE</th>
                                 <th className="status-column-header">STATUS</th>
                             </tr>
                         </thead>
@@ -1236,11 +1314,72 @@ const ClassList = () => {
                 </div>
             )}
 
+            {/* Bulk Edit Modal */}
+            {bulkEditModal.isOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-content" style={{ width: '90%', maxWidth: '420px', background: 'white', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', overflow: 'hidden' }}>
+                        <div className="modal-header" style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0, color: 'var(--color-gray-800)' }}>
+                                Edit {bulkEditModal.columnLabel}
+                            </h2>
+                            <button 
+                                className="modal-close" 
+                                onClick={() => setBulkEditModal({ isOpen: false, column: null, value: '', columnLabel: '' })} 
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div style={{ padding: '16px' }}>
+                            <p style={{ fontSize: '0.8rem', color: 'var(--color-gray-500)', margin: '0 0 12px 0' }}>
+                                Updating <strong>{selectedIds.length}</strong> selected student(s).
+                            </p>
+                            <div className="form-group" style={{ margin: 0 }}>
+                                <input
+                                    type="text"
+                                    placeholder={`New ${bulkEditModal.columnLabel}...`}
+                                    value={bulkEditModal.value}
+                                    onChange={(e) => setBulkEditModal({ ...bulkEditModal, value: e.target.value })}
+                                    style={{ width: '100%', padding: '8px 10px', fontSize: '0.875rem', borderRadius: '4px', border: '1px solid #e2e8f0', outline: 'none' }}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleBulkEditConfirm();
+                                        }
+                                    }}
+                                />
+                            </div>
+                            <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={() => setBulkEditModal({ isOpen: false, column: null, value: '', columnLabel: '' })}
+                                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="primary"
+                                    size="small"
+                                    onClick={handleBulkEditConfirm}
+                                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                >
+                                    Apply
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <input
                 type="file"
                 ref={fileInputRef}
                 style={{ display: 'none' }}
-                accept=".xlsx, .xls, .csv"
+                accept=".csv"
                 onChange={handleFileChange}
             />
         </div>

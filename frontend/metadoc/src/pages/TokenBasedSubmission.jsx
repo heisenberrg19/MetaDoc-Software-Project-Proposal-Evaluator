@@ -1,14 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { submissionAPI } from '../services/api';
 import axios from 'axios';
-import { Upload, FileText, CheckCircle, AlertCircle, X, Info, ArrowUp, Loader2 } from '../components/common/Icons';
+import { Upload, FileText, CheckCircle, AlertCircle, Info, ArrowUp, Loader2, X } from '../components/common/Icons';
 import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/common/Card/Card';
 import Button from '../components/common/Button/Button';
 import Modal from '../components/common/Modal/Modal';
 import authLogoImg from '../assets/images/Logo4.jpg';
 import '../styles/TokenBasedSubmission.css';
+
+const renderClickableText = (text, keyPrefix = 'text') => {
+  const parts = String(text || '').split(/(https?:\/\/[^\s<]+)/g);
+
+  return parts.map((part, index) => {
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`${keyPrefix}-link-${index}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="deadline-description-link"
+        >
+          {part}
+        </a>
+      );
+    }
+
+    return <span key={`${keyPrefix}-text-${index}`}>{part}</span>;
+  });
+};
 
 
 const TokenBasedSubmission = () => {
@@ -30,8 +52,12 @@ const TokenBasedSubmission = () => {
     drive_link: '',
   });
 
+  // File upload state
+  const [fileData, setFileData] = useState(null);
+  const fileInputRef = useRef(null);
+
   const [deadlineInfo, setDeadlineInfo] = useState(null);
-  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
 
   // Get token from URL
@@ -39,6 +65,23 @@ const TokenBasedSubmission = () => {
     const params = new URLSearchParams(window.location.search);
     return params.get('token');
   };
+
+  const handleClearFile = () => {
+    setFileData(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Auto-clear error after 10 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // Fetch deadline info and check registration status
   useEffect(() => {
@@ -147,7 +190,7 @@ const TokenBasedSubmission = () => {
       setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
       const errorData = err.response?.data;
-      if (errorData?.error_type === 'permission_denied') {
+      if (errorData?.error_type === 'permission_denied' || errorData?.error_type === 'unsupported_format') {
         setError({
           message: `❌ ${errorData.error}`,
           guidance: errorData.guidance,
@@ -170,6 +213,47 @@ const TokenBasedSubmission = () => {
       setLoading(false);
     }
   };
+
+  const handleFileUploadSubmit = async (e) => {
+    e.preventDefault();
+    if (!fileData) {
+      setError('Please select a file to upload');
+      return;
+    }
+
+    const token = getTokenFromURL();
+    if (!token) {
+      setError('Invalid submission link. Please use the link provided by your professor.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', fileData);
+      formData.append('token', token);
+
+      const response = await submissionAPI.uploadFile(formData);
+      setSuccess({
+        message: 'Your file has been uploaded and submitted successfully.',
+        jobId: response.data.job_id,
+      });
+
+      setFileData(null);
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err) {
+      const errorData = err.response?.data;
+      const errorMessage = errorData?.error || 'Failed to upload file';
+      setError(`❌ ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
 
   const canSubmitDriveLink = Boolean(driveData.drive_link?.trim()) && !loading;
   const descriptionText = String(deadlineInfo?.description || '').trim();
@@ -345,15 +429,19 @@ const TokenBasedSubmission = () => {
             <h1 className="deliverable-heading">TITLE : {deadlineInfo.title}</h1>
             {deadlineInfo.description && (
               <div className="deadline-description-block">
-                <p className="deadline-description">{descriptionPreview}</p>
+                <p className={`deadline-description ${isDescriptionExpanded ? 'is-expanded' : ''}`}>
+                  {isDescriptionExpanded
+                    ? renderClickableText(descriptionText, 'deadline-expanded')
+                    : descriptionPreview}
+                </p>
                 {isLongDescription && (
                   <button
                     type="button"
                     className="deadline-read-more-btn"
-                    onClick={() => setShowDescriptionModal(true)}
-                    aria-label="See the full description"
+                    onClick={() => setIsDescriptionExpanded((previous) => !previous)}
+                    aria-label={isDescriptionExpanded ? 'Collapse the description' : 'See the full description'}
                   >
-                    See more
+                    {isDescriptionExpanded ? 'See less' : 'See more'}
                   </button>
                 )}
               </div>
@@ -410,15 +498,109 @@ const TokenBasedSubmission = () => {
               <div className="submission-processing-card">
                 <Loader2 size={28} className="submission-processing-spinner" />
                 <p className="submission-processing-title">Submitting your document</p>
-                <p className="submission-processing-text">Please wait while we validate and process your Google Drive link.</p>
+                <p className="submission-processing-text">Please wait while we validate and process your document.</p>
               </div>
             </div>
           )}
 
+          {error && typeof error === 'object' && (
+            <div className="alert alert-error mb-4">
+              <AlertCircle size={20} />
+              <div>
+                <p className="font-semibold">{error.message}</p>
+                {error.guidance && (
+                  <div className="guidance-steps">
+                    {error.guidance.steps?.map((step, index) => (
+                      <p key={index} className="text-sm">{step}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && typeof error === 'string' && (
+            <div className="alert alert-error mb-4">
+              <AlertCircle size={20} />
+              <p>{error}</p>
+            </div>
+          )}
+
+          <div className="card-header submission-drive-header">
+            <h3 className="card-title text-maroon submission-drive-title">File Upload Submission</h3>
+            <p className="text-gray-600 text-sm submission-drive-subtitle">
+              Upload your DOCX or PDF file directly
+            </p>
+          </div>
+
+          <form onSubmit={handleFileUploadSubmit} className="flex flex-col gap-4 mb-8" aria-busy={loading}>
+            <div className="form-group">
+              <label className="form-label">SELECT FILE</label>
+              <div className="drive-submit-inline">
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <input
+                    type="file"
+                    accept=".docx,.doc,.pdf"
+                    ref={fileInputRef}
+                    onChange={(e) => setFileData(e.target.files[0])}
+                    className="form-input w-full"
+                    style={{ paddingRight: fileData ? '40px' : '12px' }}
+                    disabled={loading}
+                    required
+                  />
+                  {fileData && !loading && (
+                    <button
+                      type="button"
+                      onClick={handleClearFile}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        borderRadius: '50%',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                      aria-label="Remove file"
+                      title="Remove file"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  size="large"
+                  loading={loading}
+                  disabled={!fileData || loading}
+                  className="submit-analysis-btn submit-analysis-inline submit-analysis-icon-only"
+                  aria-label="Upload File"
+                  title="Upload File"
+                >
+                  <ArrowUp size={22} strokeWidth={2.6} />
+                </Button>
+              </div>
+            </div>
+          </form>
+
+          <div style={{ position: 'relative', textAlign: 'center', margin: '2rem 0' }}>
+            <hr style={{ borderTop: '1px solid #e2e8f0' }} />
+            <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'white', padding: '0 10px', color: '#64748b', fontSize: '0.85rem', fontWeight: 'bold' }}>OR</span>
+          </div>
+
           <div className="card-header submission-drive-header">
             <h3 className="card-title text-maroon submission-drive-title">Google Drive Submission</h3>
             <p className="text-gray-600 text-sm submission-drive-subtitle">
-              Provide a link to your Google Docs or DOCX file
+              Provide a link to your Google Docs. PDF and Microsoft Word files should use File Upload above.
             </p>
           </div>
 
@@ -433,7 +615,7 @@ const TokenBasedSubmission = () => {
                   onChange={(e) =>
                     setDriveData({ ...driveData, drive_link: e.target.value })
                   }
-                  placeholder="https://drive.google.com/file/d/..."
+                  placeholder="https://docs.google.com/document/d/..."
                   className="form-input w-full"
                   disabled={loading}
                   required
@@ -451,29 +633,6 @@ const TokenBasedSubmission = () => {
                 </Button>
               </div>
             </div>
-
-            {error && typeof error === 'object' && (
-              <div className="alert alert-error">
-                <AlertCircle size={20} />
-                <div>
-                  <p className="font-semibold">{error.message}</p>
-                  {error.guidance && (
-                    <div className="guidance-steps">
-                      {error.guidance.steps?.map((step, index) => (
-                        <p key={index} className="text-sm">{step}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {error && typeof error === 'string' && (
-              <div className="alert alert-error">
-                <AlertCircle size={20} />
-                <p>{error}</p>
-              </div>
-            )}
           </form>
         </Card>
       </div>
@@ -485,24 +644,6 @@ const TokenBasedSubmission = () => {
         </div>
       </div>
 
-      {showDescriptionModal && (
-        <div className="modal-overlay" onClick={() => setShowDescriptionModal(false)}>
-          <div className="modal-content submission-description-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Description</h2>
-              <button className="btn-close" onClick={() => setShowDescriptionModal(false)}>
-                <X size={22} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="submission-description-scrollable">
-                {descriptionText}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div >
   );
 };

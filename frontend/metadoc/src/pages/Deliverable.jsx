@@ -77,6 +77,28 @@ const formatFilenameInitials = (value = '', maxChars = 20) => {
 
 const isLongFilename = (value = '') => String(value).length > 20;
 
+const buildDescriptionPreview = (value = '', maxChars = 95) => {
+  const raw = String(value || '').trim();
+  if (!raw) return { preview: '', hasMore: false };
+
+  // Hide raw links in card previews for cleaner, easier-to-scan text.
+  const withoutLinks = raw.replace(/https?:\/\/\S+/gi, '').replace(/\s+/g, ' ').trim();
+  const source = withoutLinks || raw;
+
+  if (source.length <= maxChars) {
+    return { preview: source, hasMore: source !== raw };
+  }
+
+  const trimmed = source.slice(0, maxChars);
+  const lastSpace = trimmed.lastIndexOf(' ');
+  const slicePoint = lastSpace > 45 ? lastSpace : maxChars;
+
+  return {
+    preview: `${trimmed.slice(0, slicePoint).trim()}...`,
+    hasMore: true,
+  };
+};
+
 const normalizeContributorRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
   if (normalized === 'author' || normalized === 'owner') return 'Author';
@@ -612,6 +634,7 @@ const Deliverable = () => {
           <div className="folders-grid">
             {filteredDeadlines.map(deadline => {
               const isPast = new Date(deadline.deadline_datetime) < new Date();
+              const { preview: descriptionPreview, hasMore: hasDescriptionMore } = buildDescriptionPreview(deadline.description, 95);
 
               return (
                 <div
@@ -657,9 +680,9 @@ const Deliverable = () => {
                       {deadline.description ? (
                         <div className="folder-description-container">
                           <p className="folder-description">
-                            {deadline.description}
+                            {descriptionPreview}
                           </p>
-                          {deadline.description.length > 50 && (
+                          {hasDescriptionMore && (
                             <button
                               className="btn-see-more btn-see-more-description"
                               onClick={(e) => {
@@ -668,7 +691,7 @@ const Deliverable = () => {
                                 setShowDescriptionModal(true);
                               }}
                             >
-                              See More
+                              See more
                             </button>
                           )}
                         </div>
@@ -715,23 +738,26 @@ const Deliverable = () => {
           <p>Due: {new Date(selectedDeadline?.deadline_datetime).toLocaleString()}</p>
           {selectedDeadline?.description && (
             <div className={`folder-info-description ${selectedDeadline.description.length > 15 ? 'is-long' : ''}`}>
-              <span className="text-gray-600">
-                {selectedDeadline.description.length > 15
-                  ? `${selectedDeadline.description.substring(0, 15)}...`
-                  : selectedDeadline.description}
-              </span>
-              {selectedDeadline.description.length > 15 && (
-                <button
-                  className="btn-see-more btn-see-more-inline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedDescription({ title: selectedDeadline.title, content: selectedDeadline.description });
-                    setShowDescriptionModal(true);
-                  }}
-                >
-                  See More
-                </button>
-              )}
+              {(() => {
+                const { preview, hasMore } = buildDescriptionPreview(selectedDeadline.description, 60);
+                return (
+                  <>
+                    <span className="text-gray-600">{preview}</span>
+                    {hasMore && (
+                      <button
+                        className="btn-see-more btn-see-more-inline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDescription({ title: selectedDeadline.title, content: selectedDeadline.description });
+                          setShowDescriptionModal(true);
+                        }}
+                      >
+                        See more
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1313,19 +1339,11 @@ const Deliverable = () => {
           <div className="modal-content deliverable-description-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header deliverable-description-header">
               <h2 className="deliverable-description-title">{selectedDescription.title}</h2>
-              <button className="btn-close" onClick={() => setShowDescriptionModal(false)}>
-                <X size={24} />
-              </button>
             </div>
             <div className="modal-body deliverable-description-body">
               <p className="deliverable-description-content">
                 {selectedDescription.content}
               </p>
-            </div>
-            <div className="modal-footer deliverable-description-footer">
-              <button className="btn btn-primary" onClick={() => setShowDescriptionModal(false)}>
-                Close
-              </button>
             </div>
           </div>
         </div>

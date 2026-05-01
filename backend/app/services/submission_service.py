@@ -26,11 +26,12 @@ class SubmissionService:
     """Service class for handling file submissions and validation"""
     
     def __init__(self):
-        self.allowed_extensions = {'docx', 'doc'}
+        self.allowed_extensions = {'docx', 'doc', 'pdf'}
         self.allowed_mime_types = {
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'application/msword',
             'application/vnd.google-apps.document',
+            'application/pdf',
             'application/zip'  # DOCX files are ZIP archives
         }
     
@@ -53,7 +54,7 @@ class SubmissionService:
         # Check file extension
         filename = secure_filename(file.filename)
         if '.' not in filename or filename.rsplit('.', 1)[1].lower() not in self.allowed_extensions:
-            errors.append("Unsupported file type. Only DOCX and DOC files are allowed.")
+            errors.append("Unsupported file type. Only DOCX, DOC, and PDF files are allowed.")
         
         # Check MIME type using python-magic for accuracy
         file_content = file.read(1024)  # Read first 1KB for MIME detection
@@ -110,7 +111,7 @@ class SubmissionService:
             drive_link: Google Drive link (if applicable)
             professor_id: Professor ID to scope the check
             deadline_id: Deadline ID to scope the check (optional)
-            student_id: Student number of current submitter (optional)
+            student_id: Student ID of current submitter (optional)
             student_email: Gmail of current submitter (optional)
         
         Returns:

@@ -663,6 +663,7 @@ def upload_file():
             }), 409  # 409 Conflict status code
         
         # Create folder based on deadline title
+        deadline = None
         if deadline_id:
             from app.models import Deadline
             deadline = Deadline.query.filter_by(id=deadline_id).first()
@@ -692,9 +693,10 @@ def upload_file():
             file_path=storage_path,
             file_hash=file_hash,
             file_size=file_size,
-            file_type=mime_type,
+            mime_type=mime_type,
             file_modified_at=file_modified_at,
             submitted_at=datetime.utcnow(),
+            submission_type=(deadline.assignment_type or 'Document') if deadline else 'Document',
             student_id=student_id,
             student_name=student_name,
             professor_id=professor_id,
@@ -743,6 +745,11 @@ def upload_file():
         import traceback
         current_app.logger.error(f"File upload error: {e}")
         current_app.logger.error(traceback.format_exc())
+        
+        # Write exception to a file so we can read it!
+        with open('debug_error.log', 'w') as f:
+            f.write(traceback.format_exc())
+            
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 @submission_bp.route('/drive-link', methods=['POST'])
@@ -826,18 +833,40 @@ def submit_drive_link():
             else:
                 return jsonify({'error': error['message']}), 400
         
-        # Validate file type from metadata (if available)
-        if metadata.get('mimeType') and metadata['mimeType'] not in submission_service.allowed_mime_types:
+        # Strict enforcement: Block PDF uploads via Drive link (use File Upload instead)
+        file_mime = metadata.get('mimeType') or ''
+        allowed_drive_mimes = [
+            'application/vnd.google-apps.document',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/msword',
+        ]
+        if file_mime and file_mime not in allowed_drive_mimes:
+            blocked_types = {
+                'application/pdf': 'PDF',
+            }
+            friendly_name = blocked_types.get(file_mime, f'unsupported file type ({file_mime})')
             return jsonify({
-                'error': f"Unsupported file type: {metadata['mimeType']}"
+                'error': f'This file is a {friendly_name}. PDF files are not allowed via Google Drive submission.',
+                'error_type': 'unsupported_format',
+                'guidance': {
+                    'steps': [
+                        'The Google Drive submission accepts Google Docs and Word (.docx) files.',
+                        'For PDF files, please use the "File Upload Submission" method instead.',
+                    ]
+                }
             }), 415
-        
+
         # Download file
-        filename = f"{metadata['name']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        if not filename.endswith(('.docx', '.doc')):
-            filename += '.docx'
+        filename = f"{metadata.get('name', 'file')}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         
-        file_path, download_error = drive_service.download_file(file_id, filename, mime_type=metadata['mimeType'])
+        if metadata.get('mimeType') == 'application/vnd.google-apps.document':
+            # Export Google Doc to PDF
+            if not filename.lower().endswith('.pdf'):
+                filename += '.pdf'
+            file_path, download_error = drive_service.download_google_doc_as_pdf(file_id, filename)
+        else:
+            # Direct download for binary files (PDF, DOCX, etc.)
+            file_path, download_error = drive_service.download_file(file_id, filename, mime_type=metadata.get('mimeType'))
         
         if download_error:
             return jsonify({'error': download_error}), 500
@@ -1114,5 +1143,6 @@ def validate_drive_link():
     except Exception as e:
         current_app.logger.error(f"Link validation error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
+
 
 

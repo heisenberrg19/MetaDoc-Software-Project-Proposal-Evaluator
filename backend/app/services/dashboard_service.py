@@ -67,6 +67,27 @@ class DashboardService:
     def _normalize_full_name(self, first_name, last_name):
         return f"{self._normalize_lower(first_name)} {self._normalize_lower(last_name)}".strip()
 
+    def _normalize_sid(self, value):
+        """Normalize student ID to XX-XXXX-XXX format"""
+        import re
+        v = str(value or '').strip()
+        if not v or v.lower() in ('nan', 'n/a', '-', 'none'):
+            return ''
+        
+        # Remove all non-digits
+        digits = re.sub(r'\D', '', v)
+        if not digits:
+            return v # Return as is if no digits (e.g. manual text ID)
+            
+        digits = digits[:9]
+        result = digits[:2]
+        if len(digits) > 2:
+            result += '-' + digits[2:6]
+            if len(digits) > 6:
+                result += '-' + digits[6:9]
+        return result
+
+
     def _is_professor_email(self, email):
         """Return True when email belongs to a professor account with owned professor data."""
         email_norm = self._normalize_lower(email)
@@ -89,20 +110,20 @@ class DashboardService:
 
         return has_professor_data
 
-    def _validate_student_uniqueness(self, user_id, student_id, first_name, last_name, email=None, exclude_id=None):
+    def _validate_student_uniqueness(self, user_id, student_id, first_name, last_name, email=None, exclude_id=None, students_list=None):
         """Validate uniqueness per professor for student_id, full name, and email."""
         sid_norm = self._normalize_text(student_id)
         email_norm = self._normalize_lower(email)
         name_norm = self._normalize_full_name(first_name, last_name)
 
-        students = Student.query.filter_by(professor_id=user_id).all()
+        students = students_list if students_list is not None else Student.query.filter_by(professor_id=user_id).all()
 
         for existing in students:
             if exclude_id and existing.id == exclude_id:
                 continue
 
             if sid_norm and self._normalize_text(existing.student_id) == sid_norm:
-                return f"Student No. {sid_norm} already exists."
+                return f"Student ID {sid_norm} already exists."
 
             if email_norm and self._normalize_lower(existing.email) == email_norm:
                 return f"Gmail {email_norm} already exists."
@@ -588,8 +609,11 @@ class DashboardService:
             seen_emails = set()
             seen_names = set()
             
+            # Pre-fetch all students to prevent O(N^2) DB queries
+            existing_students_list = Student.query.filter_by(professor_id=user_id).all()
+            
             for data in students_data:
-                student_id = self._normalize_text(data.get('student_id'))
+                student_id = self._normalize_sid(data.get('student_id'))
                 if not student_id:
                     continue
 
@@ -599,7 +623,7 @@ class DashboardService:
                 full_name = self._normalize_full_name(first_name, last_name)
 
                 if student_id in seen_ids:
-                    return None, f"Duplicate STUDENT NO. in CSV: {student_id}"
+                    return None, f"Duplicate STUDENT ID in CSV: {student_id}"
                 seen_ids.add(student_id)
 
                 if email:
@@ -623,7 +647,8 @@ class DashboardService:
                     first_name=first_name,
                     last_name=last_name,
                     email=email,
-                    exclude_id=existing.id if existing else None
+                    exclude_id=existing.id if existing else None,
+                    students_list=existing_students_list
                 )
                 if uniqueness_error:
                     return None, uniqueness_error
@@ -637,10 +662,13 @@ class DashboardService:
                     if 'subject_no' in data:
                         existing.subject_no = data.get('subject_no')
                     
-                    # Update email if provided, otherwise check format
-                    if email:
-                        if email.endswith('@gmail.com'):
-                            existing.email = email
+                    # Update email only if it's a Gmail address or a CIT university address
+                    is_valid_email = email and (email.endswith('@gmail.com') or email.endswith('@cit.edu'))
+                    if is_valid_email:
+                        existing.email = email
+                    elif email:
+                        # If a non-gmail/cit is provided, we don't update/set it (leave blank)
+                        pass
                         
                     updated_count += 1
                 else:
@@ -656,12 +684,13 @@ class DashboardService:
                         is_registered=False
                     )
                     
-                    # Handle email for new student
-                    if email:
-                        if email.endswith('@gmail.com'):
-                            new_student.email = email
-                        
+                    # Set email only if valid
+                    is_valid_email = email and (email.endswith('@gmail.com') or email.endswith('@cit.edu'))
+                    if is_valid_email:
+                        new_student.email = email
+                    
                     db.session.add(new_student)
+                    existing_students_list.append(new_student) # Update the cache
                     imported_count += 1
             
             db.session.commit()
@@ -741,7 +770,7 @@ class DashboardService:
                 student_id=student_id,
                 last_name=last_name,
                 first_name=first_name,
-                email=email,
+                email=email if email and email.endswith('@gmail.com') else None,
                 course_year=course_year,
                 team_code=team_code,
                 subject_no=subject_no,
@@ -794,7 +823,7 @@ class DashboardService:
             if 'first_name' in student_data:
                 student.first_name = new_first
             if 'email' in student_data:
-                student.email = new_email
+                student.email = new_email if new_email and new_email.endswith('@gmail.com') else None
             if 'course_year' in student_data:
                 student.course_year = student_data['course_year']
             if 'team_code' in student_data:
@@ -1036,6 +1065,15 @@ class DashboardService:
             
             # Also store in ai_insights as the primary store for the DTO
             analysis.ai_insights = evaluation
+            
+            # Store AI-extracted group members into document_metadata
+            if evaluation.get('group_members') and isinstance(evaluation['group_members'], list):
+                doc_meta = analysis.document_metadata or {}
+                doc_meta['group_members'] = evaluation['group_members']
+                analysis.document_metadata = doc_meta
+                # Flag SQLAlchemy that the JSON column changed
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(analysis, 'document_metadata')
             
             # Populate validation_warnings for the UI
             warnings = []

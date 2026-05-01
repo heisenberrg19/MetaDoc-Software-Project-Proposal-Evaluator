@@ -102,6 +102,40 @@
   word-break: break-word;
 }
 
+.deadline-description.is-expanded {
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-maroon) rgba(128, 0, 32, 0.14);
+}
+
+.deadline-description.is-expanded::-webkit-scrollbar {
+  width: 8px;
+}
+
+.deadline-description.is-expanded::-webkit-scrollbar-track {
+  background: rgba(128, 0, 32, 0.14);
+  border-radius: 9999px;
+}
+
+.deadline-description.is-expanded::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #a10000 0%, #800000 100%);
+  border-radius: 9999px;
+}
+
+.deadline-description-link {
+  color: var(--color-maroon);
+  font-weight: 700;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.deadline-description-link:hover {
+  color: var(--color-maroon-dark);
+}
+
 .deadline-description-block {
   display: flex;
   flex-direction: column;
@@ -122,54 +156,6 @@
 .deadline-read-more-btn:hover {
   color: var(--color-maroon-dark);
   text-decoration: underline;
-}
-
-.submission-description-modal {
-  width: min(620px, 92vw);
-  max-height: 80vh;
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.submission-description-modal .modal-header {
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.submission-description-modal .modal-body {
-  padding: 1.1rem 1.25rem;
-  overflow-x: hidden;
-}
-
-.submission-description-scrollable {
-  max-height: 52vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  white-space: pre-wrap;
-  line-height: 1.6;
-  color: var(--color-gray-700);
-  padding: 0.2rem 0.45rem 0.2rem 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.submission-description-scrollable {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-maroon) rgba(128, 0, 32, 0.14);
-}
-
-.submission-description-scrollable::-webkit-scrollbar {
-  width: 8px;
-}
-
-.submission-description-scrollable::-webkit-scrollbar-track {
-  background: rgba(128, 0, 32, 0.14);
-  border-radius: 9999px;
-}
-
-.submission-description-scrollable::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #a10000 0%, #800000 100%);
-  border-radius: 9999px;
 }
 
 .submission-context {
@@ -1360,4 +1346,4 @@
   to {
     transform: rotate(360deg);
   }
-}
+}

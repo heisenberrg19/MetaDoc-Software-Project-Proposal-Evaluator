@@ -475,30 +475,70 @@ const SubmissionDetailView = () => {
                 {(() => {
                   let contributors = [];
 
-                  // Use backend provided contributors list if available
-                  if (analysis.document_metadata.contributors && analysis.document_metadata.contributors.length > 0) {
-                    contributors = analysis.document_metadata.contributors;
-                  } else {
-                    // Fallback logic
-                    if (analysis.document_metadata.author) {
+                  // 1. Start with AI-extracted members if available
+                  if (analysis.document_metadata.group_members && analysis.document_metadata.group_members.length > 0) {
+                    analysis.document_metadata.group_members.forEach(name => {
                       contributors.push({
-                        name: analysis.document_metadata.author,
-                        role: 'Author',
-                        date: analysis.document_metadata.created_date || analysis.document_metadata.creation_date,
+                        name: name,
+                        role: 'Member',
+                        date: null // AI extraction doesn't usually give specific activity dates per name
                       });
+                    });
+                  }
+
+                  // 2. Add/Merge metadata-based contributors
+                  const metaContributors = analysis.document_metadata.contributors || [];
+                  if (metaContributors.length > 0) {
+                    metaContributors.forEach(c => {
+                      // Try to avoid duplicates if name is already there
+                      const existing = contributors.find(existingC => 
+                        existingC.name.toLowerCase() === (c.name || '').toLowerCase() ||
+                        (c.email && existingC.email === c.email)
+                      );
+                      
+                      if (existing) {
+                        // Enrich existing with metadata info
+                        if (c.role && c.role !== 'Member') existing.role = c.role;
+                        if (c.date) existing.date = c.date;
+                        if (c.email) existing.email = c.email;
+                        if (c.is_submitter) existing.is_submitter = true;
+                      } else {
+                        contributors.push(c);
+                      }
+                    });
+                  } else {
+                    // Fallback to basic author/editor if no contributors list
+                    if (analysis.document_metadata.author) {
+                      const existing = contributors.find(e => e.name.toLowerCase() === analysis.document_metadata.author.toLowerCase());
+                      if (existing) {
+                        existing.role = 'Author';
+                        existing.date = analysis.document_metadata.created_date || analysis.document_metadata.creation_date;
+                      } else {
+                        contributors.push({
+                          name: analysis.document_metadata.author,
+                          role: 'Author',
+                          date: analysis.document_metadata.created_date || analysis.document_metadata.creation_date,
+                        });
+                      }
                     }
                     if (analysis.document_metadata.last_editor &&
                       analysis.document_metadata.last_editor !== analysis.document_metadata.author) {
-                      contributors.push({
-                        name: analysis.document_metadata.last_editor,
-                        role: 'Editor',
-                        date: analysis.document_metadata.modified_date || analysis.document_metadata.last_modified_date,
-                      });
+                      const existing = contributors.find(e => e.name.toLowerCase() === analysis.document_metadata.last_editor.toLowerCase());
+                      if (existing) {
+                        existing.role = 'Editor';
+                        existing.date = analysis.document_metadata.modified_date || analysis.document_metadata.last_modified_date;
+                      } else {
+                        contributors.push({
+                          name: analysis.document_metadata.last_editor,
+                          role: 'Editor',
+                          date: analysis.document_metadata.modified_date || analysis.document_metadata.last_modified_date,
+                        });
+                      }
                     }
                   }
 
                   return contributors.length > 0 ? (
-                    contributors.map((contributor, index) => {
+                    contributors.slice(0, 6).map((contributor, index) => {
                       const role = normalizeContributorRole(contributor.role);
                       
                       let hasValidDate = !!(contributor.date && !isNaN(Date.parse(contributor.date)));
@@ -551,7 +591,7 @@ const SubmissionDetailView = () => {
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-gray-400 italic">No last activity</span>
+                                <span className="text-gray-400 italic">No last activity recorded</span>
                               )}
                             </div>
                           </div>

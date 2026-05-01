@@ -56,9 +56,39 @@ try:
     app = create_app()
     
     with app.app_context():
+        # Drop all tables first to ensure a clean state
+        print("Dropping all existing tables...")
+        db.drop_all()
+        print("[+] All tables dropped successfully")
+        
         # Create all tables
+        print("Creating fresh tables...")
         db.create_all()
         print("[+] Database tables created successfully")
+        
+        # Clear storage directories
+        import shutil
+        storage_dirs = [
+            app.config.get('UPLOAD_FOLDER'),
+            app.config.get('TEMP_STORAGE_PATH'),
+            app.config.get('REPORTS_STORAGE_PATH')
+        ]
+        
+        print("\nCleaning storage directories...")
+        for directory in storage_dirs:
+            if directory and os.path.exists(directory):
+                # Don't delete the directory itself, just the contents
+                for filename in os.listdir(directory):
+                    file_path = os.path.join(directory, filename)
+                    try:
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            os.unlink(file_path)
+                        elif os.path.isdir(file_path):
+                            shutil.rmtree(file_path)
+                        print(f"  - Deleted: {file_path}")
+                    except Exception as e:
+                        print(f"  - Failed to delete {file_path}. Reason: {e}")
+        print("[+] Storage directories cleaned successfully")
         
         # Verify tables
         from sqlalchemy import inspect
@@ -70,13 +100,13 @@ try:
             print(f"  - {table}")
     
     print("\n" + "=" * 60)
-    print("Database reset complete!")
+    print("Database reset and storage cleanup complete!")
     print("=" * 60)
     print("\nYou can now start the backend server:")
     print("  python run.py")
     
 except Exception as e:
-    print(f"\n[X] Error creating database: {e}")
+    print(f"\n[X] Error resetting database: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)

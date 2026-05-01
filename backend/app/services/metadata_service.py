@@ -131,9 +131,70 @@ class MetadataService:
     
     def extract_docx_metadata(self, file_path, external_metadata=None):
         """
-        Extract metadata from DOCX file using python-docx and direct XML parsing.
-        Can be augmented with external metadata (e.g. from Google Drive API).
+        Main entry point for metadata extraction from DOCX or PDF files.
+        Applies unified normalization and cleanup to all document formats.
         """
+        # 1. Branch extraction based on file format
+        if str(file_path).lower().endswith('.pdf'):
+            metadata, parsing_error = self._extract_pdf_metadata(file_path, external_metadata)
+        else:
+            metadata, parsing_error = self._extract_docx_internal(file_path, external_metadata)
+
+        # ── 2. UNIFIED NORMALIZATION (Applies to both PDF and DOCX) ──────────────────
+        
+        # Helper for Gmail username extraction
+        def to_gmail_username(identity=None, email=None):
+            candidate = (email or identity or '').strip()
+            if '@' in candidate:
+                return candidate.split('@', 1)[0].strip().lower()
+            return (identity or '').strip()
+
+        # [FINAL FALLBACK] Auth/Editor cleanup
+        for field in ['author', 'last_editor']:
+            val = str(metadata.get(field, ''))
+            # Filter out generic/library names
+            if not val or val.strip() == '' or 'python-docx' in val.lower() or val.lower() == 'none' or val.lower() == 'unavailable':
+                metadata[field] = 'Unavailable'
+            else:
+                # Clean up to just the username/display name
+                metadata[field] = to_gmail_username(val)
+
+        # Cleanup contributor list: remove 'python-docx' or 'Unavailable' entries
+        if metadata.get('contributors'):
+            cleaned_contributors = []
+            seen_names = set()
+            for c in metadata['contributors']:
+                name = str(c.get('name', '')).strip()
+                if not name or name.lower() in ['unavailable', 'none', 'python-docx', 'unknown', '']:
+                    continue
+                
+                # Normalize name for deduplication
+                norm_name = to_gmail_username(name).lower()
+                if norm_name not in seen_names:
+                    cleaned_contributors.append(c)
+                    seen_names.add(norm_name)
+            metadata['contributors'] = cleaned_contributors[:10] # Limit to 10
+
+        # If Author/Editor are still Unavailable, try to pick from contributors
+        if metadata.get('contributors') and len(metadata['contributors']) > 0:
+            if metadata['author'] == 'Unavailable':
+                # Prefer Author/Owner role
+                potential_author = next((c for c in metadata['contributors'] if c.get('role') in ['Author', 'Owner']), metadata['contributors'][0])
+                metadata['author'] = potential_author.get('name', 'Unavailable')
+            
+            if metadata['last_editor'] == 'Unavailable':
+                # Prefer Last Editor or Editor
+                potential_editor = next((c for c in reversed(metadata['contributors']) if c.get('role') in ['Last Editor', 'Editor']), metadata['contributors'][-1])
+                metadata['last_editor'] = potential_editor.get('name', 'Unavailable')
+
+        # If author is still unavailable but we have a reliable editor, use it as fallback
+        if metadata['author'] == 'Unavailable' and metadata['last_editor'] != 'Unavailable':
+            metadata['author'] = metadata['last_editor']
+
+        return metadata, parsing_error
+
+    def _extract_docx_internal(self, file_path, external_metadata=None):
+        """Internal DOCX-specific extraction logic"""
         metadata = {
             'author': 'Unavailable',
             'creation_date': None,
@@ -447,32 +508,6 @@ class MetadataService:
                     email=perm_email
                 )
 
-        # [FINAL FALLBACK] Auth/Editor cleanup
-        for field in ['author', 'last_editor']:
-            val = str(metadata.get(field, ''))
-            if not val or val.strip() == '' or 'python-docx' in val.lower() or val.lower() == 'none' or val.lower() == 'unavailable':
-                metadata[field] = 'Unavailable'
-            else:
-                metadata[field] = to_gmail_username(val)
-
-        # If Author/Editor are still Unavailable, try to pick from contributors
-        if metadata['contributors']:
-            if metadata['author'] == 'Unavailable':
-                # Prefer Author role.
-                potential_author = next((c for c in metadata['contributors'] if c.get('role') in ['Author', 'Owner']), metadata['contributors'][0])
-                metadata['author'] = potential_author.get('name', 'Unavailable')
-            
-            if metadata['last_editor'] == 'Unavailable':
-                # Prefer Last Editor or Editor
-                # Reverse list to get the most recent one if multiple exist
-                potential_editor = next((c for c in reversed(metadata['contributors']) if c.get('role') in ['Last Editor', 'Editor']), metadata['contributors'][-1])
-                metadata['last_editor'] = potential_editor.get('name', 'Unavailable')
-
-        # If author is still unavailable but we have a reliable editor identity,
-        # use it as final fallback rather than showing an empty author.
-        if metadata['author'] == 'Unavailable' and metadata['last_editor'] != 'Unavailable':
-            metadata['author'] = metadata['last_editor']
-
         # Final filesystem fallback for dates
         if not metadata['creation_date']:
             try:
@@ -485,21 +520,14 @@ class MetadataService:
                 metadata['last_modified_date'] = datetime.fromtimestamp(m_time).isoformat()
             except Exception: pass
 
-        # Sync back to contributors one last time to ensure author/editor are listed with roles
-        if metadata['author'] != 'Unavailable':
-            add_contributor(metadata['author'], 'Author', date=metadata['creation_date'])
-        if metadata['last_editor'] != 'Unavailable':
-            add_contributor(metadata['last_editor'], 'Editor', date=metadata['last_modified_date'])
-            
-        # Limit to 10 unique contributors
-        if isinstance(metadata['contributors'], list):
-            metadata['contributors'] = metadata['contributors'][:10]
-        
         return metadata, parsing_error
 
     
     def extract_document_text(self, file_path):
-        """Extract full text content from DOCX file including headers, footers, and shapes"""
+        """Extract full text content from DOCX or PDF file"""
+        if str(file_path).lower().endswith('.pdf'):
+            return self._extract_pdf_text(file_path)
+            
         try:
             doc = Document(file_path)
             
@@ -744,3 +772,104 @@ class MetadataService:
         }
         
         return report
+
+    def _extract_pdf_metadata(self, file_path, external_metadata=None):
+        metadata = {
+            'author': 'Unavailable',
+            'creation_date': None,
+            'last_modified_date': None,
+            'last_editor': 'Unavailable',
+            'file_size': 0,
+            'word_count': 0,
+            'revision_count': 0,
+            'editing_time_minutes': 0,
+            'application': 'Unknown',
+            'image_count': 0,
+            'image_density_warning': False,
+            'contributors': []
+        }
+        parsing_error = None
+
+        try:
+            metadata['file_size'] = os.path.getsize(file_path)
+            from pypdf import PdfReader
+            reader = PdfReader(file_path)
+            meta = reader.metadata
+
+            if meta:
+                if meta.author:
+                    metadata['author'] = meta.author
+                    metadata['contributors'].append({'name': meta.author, 'role': 'Author'})
+                if meta.creator:
+                    metadata['application'] = meta.creator
+                
+                # Basic timestamp parsing for PDF creation/modification dates if available
+                # D:YYYYMMDDHHmmSSOHH'mm' format
+                def parse_pdf_date(date_str):
+                    if not date_str: return None
+                    date_str = str(date_str).replace('D:', '').replace("'", "")
+                    try:
+                        dt = datetime.strptime(date_str[:14], "%Y%m%d%H%M%S")
+                        return dt.isoformat()
+                    except:
+                        return None
+
+                if meta.creation_date:
+                    metadata['creation_date'] = parse_pdf_date(meta.creation_date) or str(meta.creation_date)
+                if meta.modification_date:
+                    metadata['last_modified_date'] = parse_pdf_date(meta.modification_date) or str(meta.modification_date)
+            
+            # Count images in PDF
+            img_count = 0
+            for page in reader.pages:
+                if '/XObject' in page['/Resources']:
+                    xObject = page['/Resources']['/XObject'].get_object()
+                    for obj in xObject:
+                        if xObject[obj]['/Subtype'] == '/Image':
+                            img_count += 1
+            metadata['image_count'] = img_count
+
+        except Exception as e:
+            current_app.logger.error(f"PDF metadata extraction failed: {e}")
+            parsing_error = str(e)
+            metadata['parsing_error'] = parsing_error
+
+        # Deduplicate and merge external metadata
+        if external_metadata:
+            if not metadata['creation_date']:
+                metadata['creation_date'] = external_metadata.get('createdTime')
+            if external_metadata.get('modifiedTime'):
+                metadata['last_modified_date'] = external_metadata.get('modifiedTime')
+            
+            if metadata['author'] == 'Unavailable':
+                owners = external_metadata.get('owners', [])
+                if owners:
+                    metadata['author'] = owners[0].get('displayName') or owners[0].get('emailAddress') or 'Unavailable'
+            
+            if metadata['last_editor'] == 'Unavailable':
+                lmu = external_metadata.get('lastModifyingUser')
+                if lmu:
+                    metadata['last_editor'] = lmu.get('displayName') or lmu.get('emailAddress') or 'Unavailable'
+
+        if not metadata['creation_date']:
+            try: metadata['creation_date'] = datetime.fromtimestamp(os.path.getctime(file_path)).isoformat()
+            except: pass
+        if not metadata['last_modified_date']:
+            try: metadata['last_modified_date'] = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+            except: pass
+
+        return metadata, parsing_error
+
+    def _extract_pdf_text(self, file_path):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(file_path)
+            text_parts = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    text_parts.append(text)
+            return "\n\f\n".join(text_parts), None
+        except Exception as e:
+            current_app.logger.error(f"PDF text extraction failed: {e}")
+            return None, f"PDF text extraction error: {e}"
