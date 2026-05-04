@@ -314,41 +314,24 @@ const SubmissionDetailView = () => {
     navigate('/dashboard/deliverables');
   };
 
-  const handleViewFile = async () => {
+  const handleViewFile = () => {
     // If it's a Google Drive link, open it directly in a new tab (best for GDocs)
     if (submission.google_drive_link) {
       window.open(submission.google_drive_link, '_blank');
       return;
     }
 
-    try {
-      // For file uploads (or fallback), we download/view via API
-      const response = await dashboardAPI.getSubmissionFile(id);
-
-      // Create a blob from the response
-      const file = new Blob([response.data], { type: submission.mime_type || 'application/pdf' });
-      const fileURL = URL.createObjectURL(file);
-      window.open(fileURL, '_blank');
-    } catch (err) {
-      console.error('Error viewing file:', err);
-
-      let errorMessage = 'Failed to open file. It might not exist or there was an error.';
-
-      // Check if the error response is a Blob (since we requested blob)
-      if (err.response && err.response.data instanceof Blob) {
-        try {
-          const text = await err.response.data.text();
-          const json = JSON.parse(text);
-          if (json.error) errorMessage = json.error;
-        } catch (e) {
-          // ignore parse error
-        }
-      } else if (err.response?.data?.error) {
-        errorMessage = err.response.data.error;
-      }
-
-      alert(errorMessage);
-    }
+    // For file uploads, we use a direct authenticated link to avoid Blob corruption and preserve the filename
+    const token = localStorage.getItem('session_token');
+    
+    // Construct the direct URL. In development, this uses the Vite proxy (/api/v1).
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+    const downloadUrl = `${API_BASE_URL}/dashboard/submissions/${id}/download?token=${token}`;
+    
+    // Open in a new tab. 
+    // - PDFs will open in the browser viewer (inline)
+    // - Word Docs will download with the correct filename from the Content-Disposition header
+    window.open(downloadUrl, '_blank');
   };
 
   const analysis = submission?.analysis_result;

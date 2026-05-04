@@ -1032,14 +1032,22 @@ class DashboardService:
                 eval_items = evaluation.get('rubric_evaluation', [])
                 
                 for criterion in criteria_list:
-                    name = criterion.get('name')
+                    name = criterion.get('name', '')
                     weight = float(criterion.get('weight', 0))
                     
-                    # Try to find matching evaluation item (exact or fuzzy)
-                    found_item = next((item for item in eval_items if item.get('criterion_name') == name), None)
+                    name_clean = name.strip().lower()
+                    
+                    # Try to find matching evaluation item
+                    # 1. Exact match (case-insensitive, stripped)
+                    found_item = next((item for item in eval_items if item.get('criterion_name', '').strip().lower() == name_clean), None)
+                    
                     if not found_item:
-                        # Fuzzy match check
-                        found_item = next((item for item in eval_items if name.lower() in item.get('criterion_name', '').lower()), None)
+                        # 2. Fuzzy match (one contains the other)
+                        found_item = next((
+                            item for item in eval_items 
+                            if name_clean in item.get('criterion_name', '').lower() 
+                            or item.get('criterion_name', '').lower() in name_clean
+                        ), None)
                     
                     if found_item:
                         score = float(found_item.get('score', 0))

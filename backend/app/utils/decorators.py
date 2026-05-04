@@ -21,12 +21,18 @@ def require_authentication():
         @wraps(f)
         def wrapper(*args, **kwargs):
             try:
-                # Get session token from Authorization header
+                # Get session token from Authorization header or Query Parameter
                 auth_header = request.headers.get('Authorization')
-                if not auth_header or not auth_header.startswith('Bearer '):
-                    raise AuthenticationError('Authentication required')
+                session_token = None
                 
-                session_token = auth_header[7:]
+                if auth_header and auth_header.startswith('Bearer '):
+                    session_token = auth_header[7:]
+                else:
+                    # Fallback to query parameter 'token' for direct file access
+                    session_token = request.args.get('token')
+                
+                if not session_token:
+                    raise AuthenticationError('Authentication required')
                 
                 # Validate session
                 from app.api.auth import get_auth_service

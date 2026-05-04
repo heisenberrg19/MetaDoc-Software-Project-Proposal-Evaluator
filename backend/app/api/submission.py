@@ -597,6 +597,17 @@ def upload_file():
         temp_path = os.path.join(current_app.config['TEMP_STORAGE_PATH'], unique_filename)
         file.save(temp_path)
         
+        # IMMEDIATELY read binary content into memory for database storage
+        # This avoids issues with file locks later in the process
+        file_content = None
+        try:
+            with open(temp_path, 'rb') as f:
+                file_content = f.read()
+            if current_app:
+                current_app.logger.info(f"Captured {len(file_content)} bytes for database storage")
+        except Exception as e:
+            current_app.logger.error(f"Failed to read file content for DB storage: {e}")
+        
         # Pre-validate the document before creating submission
         try:
             from app.api.metadata import metadata_service
@@ -684,13 +695,22 @@ def upload_file():
             # No deadline - use root upload folder
             storage_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
         
-        os.rename(temp_path, storage_path)
+        # Move file to permanent storage path
+        try:
+            import shutil
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+            shutil.move(temp_path, storage_path)
+        except Exception as e:
+            current_app.logger.warning(f"Could not move file to permanent storage: {e}. File will still be available via Database storage.")
+            # We don't fail here because we have the content in 'file_content' variable for the DB record
         
         # Create submission record
         submission, error = submission_service.create_submission_record(
             file_name=unique_filename,
             original_filename=original_filename,
             file_path=storage_path,
+            file_content=file_content,
             file_hash=file_hash,
             file_size=file_size,
             mime_type=mime_type,

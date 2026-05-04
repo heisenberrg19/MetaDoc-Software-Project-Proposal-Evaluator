@@ -22,6 +22,7 @@ class Submission(BaseModel):
     file_hash = db.Column(db.String(64), nullable=False)
     mime_type = db.Column(db.String(100), nullable=False)
     file_modified_at = db.Column(db.DateTime, nullable=True)
+    file_content = db.deferred(db.Column(db.LargeBinary, nullable=True))
     
     # Submission details
     submission_type = db.Column(db.String(50), nullable=False)

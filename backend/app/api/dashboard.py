@@ -677,21 +677,112 @@ def download_submission_file(submission_id):
         # This provides a fallback if the link is inaccessible or if the user wants the analyzed version
 
 
-        if not submission.file_path:
-             return jsonify({'error': 'No file path associated with submission'}), 404
-             
-        # Ensure absolute path
-        abs_file_path = os.path.abspath(submission.file_path)
+        # If file_content is in the DB, serve it directly from memory
+        # This solves the local storage vs remote DB issue
+        if submission.file_content:
+            import io
+            import mimetypes
+            
+            # Determine correct mimetype
+            mimetype = submission.mime_type
+            if not mimetype and submission.original_filename:
+                mimetype, _ = mimetypes.guess_type(submission.original_filename)
+            
+            if not mimetype:
+                # Default based on extension if still unknown
+                ext = submission.original_filename.lower().split('.')[-1] if submission.original_filename else ''
+                if ext == 'docx':
+                    mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif ext == 'doc':
+                    mimetype = 'application/msword'
+                else:
+                    mimetype = 'application/pdf' # Final fallback
+            
+            # Ensure a valid download name
+            dn = submission.original_filename or submission.file_name or f"submission_{submission_id}"
+            
+            # Use attachment mode for non-PDFs to ensure they open correctly in desktop apps (like Word)
+            # PDFs are kept as as_attachment=False so they can open in browser tabs
+            is_pdf = mimetype == 'application/pdf'
+            
+            return send_file(
+                io.BytesIO(submission.file_content),
+                as_attachment=not is_pdf,
+                download_name=dn,
+                mimetype=mimetype
+            )
+
+        # Fallback to local disk (for old submissions)
+        from config import _BACKEND_DIR
+        file_path = submission.file_path
+        if file_path.startswith('./'):
+            # Convert relative path to absolute relative to backend dir
+            abs_file_path = os.path.abspath(os.path.join(_BACKEND_DIR, file_path[2:]))
+        else:
+            abs_file_path = os.path.abspath(file_path)
 
         if not os.path.exists(abs_file_path):
-             current_app.logger.error(f"File not found on disk: {abs_file_path}")
-             return jsonify({'error': 'File not found on server'}), 404
+             current_app.logger.warning(f"File not found on disk: {abs_file_path}. Generating missing file notice.")
              
+             # Generate a PDF explaining why it's missing instead of throwing a 404 error
+             from reportlab.pdfgen import canvas
+             from reportlab.lib.pagesizes import letter
+             import io
+             
+             buffer = io.BytesIO()
+             c = canvas.Canvas(buffer, pagesize=letter)
+             c.setFont("Helvetica-Bold", 16)
+             c.drawString(72, 700, "Document Missing from Local Storage")
+             c.setFont("Helvetica", 12)
+             c.drawString(72, 660, f"Filename: {submission.original_filename}")
+             
+             text = [
+                 "This document was uploaded to a different environment",
+                 "(such as a production server or another computer)",
+                 "and is stored in that environment's local filesystem.",
+                 "",
+                 "Because this local instance is connected to a remote",
+                 "shared database, it can see the submission record,",
+                 "but the physical file does not exist on this hard drive.",
+                 "",
+                 "The application has now been refactored to store",
+                 "future uploads directly in the database. Please upload",
+                 "a new file to test the view functionality!"
+             ]
+             y = 620
+             for line in text:
+                 c.drawString(72, y, line)
+                 y -= 20
+                 
+             c.save()
+             buffer.seek(0)
+             
+             return send_file(
+                 buffer,
+                 as_attachment=False,
+                 download_name="Missing_File_Notice.pdf",
+                 mimetype='application/pdf'
+             )
+             
+        import mimetypes
+        mimetype = submission.mime_type
+        if not mimetype and submission.original_filename:
+            mimetype, _ = mimetypes.guess_type(submission.original_filename)
+        
+        if not mimetype:
+            ext = submission.original_filename.lower().split('.')[-1] if submission.original_filename else ''
+            mimetype = 'application/pdf' if ext != 'docx' and ext != 'doc' else (
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if ext == 'docx' else 'application/msword'
+            )
+
+        is_pdf = mimetype == 'application/pdf'
+        dn = submission.original_filename or submission.file_name or f"submission_{submission_id}"
+
         return send_file(
             abs_file_path,
-            as_attachment=False, # View in browser if possible (inline)
-            download_name=submission.original_filename,
-            mimetype=submission.mime_type or 'application/pdf'
+            as_attachment=not is_pdf, # View in browser if PDF, download if Docx
+            download_name=dn,
+            mimetype=mimetype
         )
     except Exception as e:
         import traceback
