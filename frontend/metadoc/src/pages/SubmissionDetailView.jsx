@@ -323,11 +323,11 @@ const SubmissionDetailView = () => {
 
     // For file uploads, we use a direct authenticated link to avoid Blob corruption and preserve the filename
     const token = localStorage.getItem('session_token');
-    
+
     // Construct the direct URL. In development, this uses the Vite proxy (/api/v1).
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
     const downloadUrl = `${API_BASE_URL}/dashboard/submissions/${id}/download?token=${token}`;
-    
+
     // Open in a new tab. 
     // - PDFs will open in the browser viewer (inline)
     // - Word Docs will download with the correct filename from the Content-Disposition header
@@ -373,6 +373,24 @@ const SubmissionDetailView = () => {
             <div className="info-item">
               <span className="info-label">Student ID</span>
               <span className="info-value">{formatStudentId(submission.student_id)}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Team Code</span>
+              <span className="info-value">{submission.team_code || 'N/A'}</span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Team Members</span>
+              <div className="info-value">
+                {submission.team_members && submission.team_members.length > 0 ? (
+                  <ul className="team-members-list" style={{ paddingLeft: '1.2rem', margin: '0', listStyleType: 'disc' }}>
+                    {submission.team_members.map((member, idx) => (
+                      <li key={idx} style={{ fontSize: '0.9rem', marginBottom: '2px' }}>{member}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  'None listed'
+                )}
+              </div>
             </div>
             <div className="info-item">
               <span className="info-label">Submission Date</span>
@@ -474,11 +492,11 @@ const SubmissionDetailView = () => {
                   if (metaContributors.length > 0) {
                     metaContributors.forEach(c => {
                       // Try to avoid duplicates if name is already there
-                      const existing = contributors.find(existingC => 
+                      const existing = contributors.find(existingC =>
                         existingC.name.toLowerCase() === (c.name || '').toLowerCase() ||
                         (c.email && existingC.email === c.email)
                       );
-                      
+
                       if (existing) {
                         // Enrich existing with metadata info
                         if (c.role && c.role !== 'Member') existing.role = c.role;
@@ -523,9 +541,9 @@ const SubmissionDetailView = () => {
                   return contributors.length > 0 ? (
                     contributors.slice(0, 6).map((contributor, index) => {
                       const role = normalizeContributorRole(contributor.role);
-                      
+
                       let hasValidDate = !!(contributor.date && !isNaN(Date.parse(contributor.date)));
-                      
+
                       // If an editor's activity date is identical to the author's, it implies no separate revision.
                       if (hasValidDate && role.toLowerCase() !== 'author') {
                         const author = contributors.find(c => normalizeContributorRole(c.role) === 'Author');

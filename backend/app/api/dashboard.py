@@ -324,26 +324,37 @@ def get_submission_detail(submission_id):
     try:
         user_id = request.current_user.id
         
-        submission, error = dashboard_service.get_submission_detail(submission_id, user_id)
+        result, error = dashboard_service.get_submission_detail(submission_id, user_id)
         
         if error:
             return jsonify({'error': error}), 404 if 'not found' in error else 500
             
+        submission = result['submission']
+        team_info = result['team_info']
+        
+        # Defensive check for field access
+        def get_field(obj, field_name):
+            if isinstance(obj, dict):
+                return obj.get(field_name)
+            return getattr(obj, field_name, None)
+
+        google_drive_link = get_field(submission, 'google_drive_link')
+            
         # Keep Drive-link submissions in sync with latest remote edits.
         try:
-            if submission.google_drive_link:
+            if google_drive_link:
                 force_refresh = str(request.args.get('force_refresh', 'false')).lower() == 'true'
                 refreshed, refresh_error = _refresh_drive_submission_analysis(submission, force_refresh=force_refresh)
                 if refresh_error:
                     if force_refresh:
                         return jsonify({'error': f"Refresh failed: {refresh_error}"}), 400
                     current_app.logger.warning(
-                        f"Drive sync skipped for submission {submission.id}: {refresh_error}"
+                        f"Drive sync skipped for submission {get_field(submission, 'id')}: {refresh_error}"
                     )
                 elif refreshed:
                     db.session.refresh(submission)
         except Exception as sync_err:
-            current_app.logger.warning(f"Drive analysis sync failed for {submission.id}: {sync_err}")
+            current_app.logger.warning(f"Drive analysis sync failed for {get_field(submission, 'id')}: {sync_err}")
 
         # [Auto-Repair] Check if metadata is missing/incomplete
         # This fixes submissions that were processed before the metadata logic was improved
@@ -538,7 +549,15 @@ def get_submission_detail(submission_id):
 
         # Serialize submission using DTO
         from app.schemas.dto import SubmissionDetailDTO
-        return jsonify(SubmissionDetailDTO.serialize(submission))
+        serialized = SubmissionDetailDTO.serialize(submission)
+        
+        # Inject team info if available
+        if team_info:
+            serialized['team_code'] = team_info.get('team_code')
+            serialized['team_members'] = team_info.get('members', [])
+            serialized['submitter_email'] = team_info.get('submitter_email')
+            
+        return jsonify(serialized)
         
     except Exception as e:
         current_app.logger.error(f"Submission detail error: {e}")
@@ -668,29 +687,39 @@ def download_submission_file(submission_id):
     """
     try:
         user_id = request.current_user.id
-        submission, error = dashboard_service.get_submission_detail(submission_id, user_id)
+        result, error = dashboard_service.get_submission_detail(submission_id, user_id)
         
         if error:
              return jsonify({'error': error}), 404 if 'not found' in error else 500
              
-        # Allow downloading of the local snapshot file even if it's a drive link
-        # This provides a fallback if the link is inaccessible or if the user wants the analyzed version
+        submission = result['submission']
+             
+        # Defensive check: Determine if submission is a model object or a dictionary
+        # This prevents the 'dict object has no attribute file_content' error
+        def get_field(obj, field_name):
+            if isinstance(obj, dict):
+                return obj.get(field_name)
+            return getattr(obj, field_name, None)
 
+        file_content = get_field(submission, 'file_content')
 
         # If file_content is in the DB, serve it directly from memory
         # This solves the local storage vs remote DB issue
-        if submission.file_content:
+        if file_content:
             import io
             import mimetypes
             
             # Determine correct mimetype
-            mimetype = submission.mime_type
-            if not mimetype and submission.original_filename:
-                mimetype, _ = mimetypes.guess_type(submission.original_filename)
+            mimetype = get_field(submission, 'mime_type')
+            original_filename = get_field(submission, 'original_filename')
+            file_name = get_field(submission, 'file_name')
+
+            if not mimetype and original_filename:
+                mimetype, _ = mimetypes.guess_type(original_filename)
             
             if not mimetype:
                 # Default based on extension if still unknown
-                ext = submission.original_filename.lower().split('.')[-1] if submission.original_filename else ''
+                ext = original_filename.lower().split('.')[-1] if original_filename else ''
                 if ext == 'docx':
                     mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 elif ext == 'doc':
@@ -699,14 +728,14 @@ def download_submission_file(submission_id):
                     mimetype = 'application/pdf' # Final fallback
             
             # Ensure a valid download name
-            dn = submission.original_filename or submission.file_name or f"submission_{submission_id}"
+            dn = original_filename or file_name or f"submission_{submission_id}"
             
             # Use attachment mode for non-PDFs to ensure they open correctly in desktop apps (like Word)
             # PDFs are kept as as_attachment=False so they can open in browser tabs
             is_pdf = mimetype == 'application/pdf'
             
             return send_file(
-                io.BytesIO(submission.file_content),
+                io.BytesIO(file_content),
                 as_attachment=not is_pdf,
                 download_name=dn,
                 mimetype=mimetype
@@ -714,7 +743,13 @@ def download_submission_file(submission_id):
 
         # Fallback to local disk (for old submissions)
         from config import _BACKEND_DIR
-        file_path = submission.file_path
+        file_path = get_field(submission, 'file_path')
+        original_filename = get_field(submission, 'original_filename')
+        file_name = get_field(submission, 'file_name')
+        
+        if not file_path:
+             return jsonify({'error': 'File path not found for this submission'}), 404
+
         if file_path.startswith('./'):
             # Convert relative path to absolute relative to backend dir
             abs_file_path = os.path.abspath(os.path.join(_BACKEND_DIR, file_path[2:]))
@@ -734,7 +769,7 @@ def download_submission_file(submission_id):
              c.setFont("Helvetica-Bold", 16)
              c.drawString(72, 700, "Document Missing from Local Storage")
              c.setFont("Helvetica", 12)
-             c.drawString(72, 660, f"Filename: {submission.original_filename}")
+             c.drawString(72, 660, f"Filename: {original_filename}")
              
              text = [
                  "This document was uploaded to a different environment",
@@ -765,18 +800,18 @@ def download_submission_file(submission_id):
              )
              
         import mimetypes
-        mimetype = submission.mime_type
-        if not mimetype and submission.original_filename:
-            mimetype, _ = mimetypes.guess_type(submission.original_filename)
+        mimetype = get_field(submission, 'mime_type')
+        if not mimetype and original_filename:
+            mimetype, _ = mimetypes.guess_type(original_filename)
         
         if not mimetype:
-            ext = submission.original_filename.lower().split('.')[-1] if submission.original_filename else ''
+            ext = original_filename.lower().split('.')[-1] if original_filename else ''
             mimetype = 'application/pdf' if ext != 'docx' and ext != 'doc' else (
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if ext == 'docx' else 'application/msword'
             )
 
         is_pdf = mimetype == 'application/pdf'
-        dn = submission.original_filename or submission.file_name or f"submission_{submission_id}"
+        dn = original_filename or file_name or f"submission_{submission_id}"
 
         return send_file(
             abs_file_path,

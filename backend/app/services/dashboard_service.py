@@ -402,7 +402,7 @@ class DashboardService:
             return None, str(e)
     
     def get_submission_detail(self, submission_id, user_id):
-        """Get detailed submission information"""
+        """Get detailed submission information with enriched team data"""
         try:
             submission = Submission.query.filter_by(
                 id=submission_id,
@@ -412,11 +412,55 @@ class DashboardService:
             if not submission:
                 return None, "Submission not found"
             
-            return submission, None
+            # Enrich with team info
+            team_info = self.get_team_info(submission.student_id, user_id)
+            
+            # We'll attach it to the submission object temporarily so the DTO can pick it up
+            # or just return it as a tuple
+            return {
+                'submission': submission,
+                'team_info': team_info
+            }, None
             
         except Exception as e:
             current_app.logger.error(f"Submission detail error: {e}")
             return None, str(e)
+
+    def get_team_info(self, student_id, professor_id):
+        """Fetch team code, all members, and submitter email for a given student"""
+        try:
+            if not student_id:
+                return None
+                
+            student = Student.query.filter_by(
+                student_id=student_id,
+                professor_id=professor_id
+            ).first()
+            
+            if not student:
+                return {
+                    'team_code': None,
+                    'members': [],
+                    'submitter_email': None
+                }
+            
+            team_code = student.team_code
+            members = []
+            if team_code:
+                member_rows = Student.query.filter_by(
+                    team_code=team_code,
+                    professor_id=professor_id
+                ).all()
+                members = [f"{m.first_name} {m.last_name}".strip() for m in member_rows]
+            
+            return {
+                'team_code': team_code,
+                'members': members,
+                'submitter_email': student.email
+            }
+        except Exception as e:
+            current_app.logger.error(f"Error fetching team info: {e}")
+            return None
     
     def delete_submission(self, submission_id, user_id):
         """Delete a submission and its related data"""
