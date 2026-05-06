@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Card from './common/Card/Card';
 import { nlpAPI } from '../services/api';
 
-const RubricEditorModal = ({ isOpen, onClose, rubricToEdit, onSave }) => {
+const RubricEditorModal = ({ isOpen, onClose, rubricToEdit, onSave, inline = false }) => {
   const [activeRubric, setActiveRubric] = useState(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -104,9 +104,8 @@ const RubricEditorModal = ({ isOpen, onClose, rubricToEdit, onSave }) => {
     }, 1000);
   };
 
-  return (
-    <div className="modal-overlay rubric-modal-overlay" onClick={onClose}>
-      <div className="modal-content rubric-editor-modal-v4" onClick={(e) => e.stopPropagation()}>
+  const modalBody = (
+      <div className={`modal-content rubric-editor-modal-v4${inline ? ' rubric-editor-inline' : ''}`} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="simple-modal-header-v4">
           <div className="header-left-v4">
@@ -307,6 +306,15 @@ const RubricEditorModal = ({ isOpen, onClose, rubricToEdit, onSave }) => {
           </div>
         </div>
       </div>
+  );
+
+  if (inline) {
+    return modalBody;
+  }
+
+  return (
+    <div className="modal-overlay rubric-modal-overlay" onClick={onClose}>
+      {modalBody}
     </div>
   );
 };

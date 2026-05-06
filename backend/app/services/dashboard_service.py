@@ -998,7 +998,8 @@ class DashboardService:
                 isinstance(analysis.ai_insights, dict)):
                 
                 # Reuse existing evaluation - criteria, prompt, and file haven't changed
-                evaluation = analysis.ai_insights
+                # Use dict() to ensure we have a fresh copy to modify (e.g. for re-applying penalties)
+                evaluation = dict(analysis.ai_insights)
                 current_app.logger.info(
                     f"Reusing cached evaluation for submission {submission_id} "
                     f"with rubric {rubric_id} (criteria, prompt message, and file content unchanged)"
@@ -1056,6 +1057,38 @@ class DashboardService:
                 
                 if error:
                     return None, error
+
+                def _to_score(value):
+                    try:
+                        if value is None or value == '':
+                            return None
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return None
+
+                def _round_score(value):
+                    score_value = _to_score(value)
+                    return round(score_value, 1) if score_value is not None else None
+
+                raw_ai_score = _round_score(evaluation.get('score'))
+                if raw_ai_score is not None:
+                    evaluation['ai_score'] = raw_ai_score
+
+                rubric_evaluations = evaluation.get('rubric_evaluation', [])
+                if isinstance(rubric_evaluations, list):
+                    for item in rubric_evaluations:
+                        if isinstance(item, dict):
+                            normalized_item_score = _round_score(item.get('score'))
+                            if normalized_item_score is not None:
+                                item['score'] = normalized_item_score
+
+                contributor_evaluations = evaluation.get('contributor_evaluations', [])
+                if isinstance(contributor_evaluations, list):
+                    for item in contributor_evaluations:
+                        if isinstance(item, dict):
+                            normalized_contribution_score = _round_score(item.get('contribution_score'))
+                            if normalized_contribution_score is not None:
+                                item['contribution_score'] = normalized_contribution_score
                 
                 # Update rubric tracking fields
                 analysis.last_evaluated_rubric_id = rubric_id
@@ -1094,18 +1127,55 @@ class DashboardService:
                         ), None)
                     
                     if found_item:
-                        score = float(found_item.get('score', 0))
+                        score = _to_score(found_item.get('score'))
+                        if score is None:
+                            continue
                         total_weighted_score += (score * (weight / 100.0))
                         total_found_weight += weight
                 
-                # Update the score in the evaluation dictionary
-                if total_found_weight > 0:
-                    evaluation['score'] = round(total_weighted_score, 2)
+                weighted_score = round(total_weighted_score, 1) if total_found_weight > 0 else None
+                base_score = raw_ai_score if raw_ai_score is not None else weighted_score
+                if base_score is None:
+                    try:
+                        base_score = float(evaluation.get('score', 0) or 0)
+                    except (TypeError, ValueError):
+                        base_score = 0.0
+                score = round(base_score, 1)
+
+                if weighted_score is not None:
+                    evaluation['weighted_score'] = weighted_score
+                evaluation['raw_ai_score'] = raw_ai_score if raw_ai_score is not None else score
+
+                # Apply late submission penalty
+                import math
+                days_late_float = submission.get_days_late()
+                if days_late_float > 0:
+                    days_late = math.ceil(days_late_float)
+                    penalty = 0
+                    if days_late == 1:
+                        penalty = 5
+                    elif days_late == 2:
+                        penalty = 10
+                    elif days_late >= 3:
+                        penalty = 25
+                    
+                    if penalty > 0:
+                        evaluation['original_score'] = score
+                        evaluation['late_penalty'] = penalty
+                        evaluation['days_late'] = days_late
+                        score = round(max(0, score - penalty), 1)
+                
+                evaluation['score'] = score
+                # Persist to top-level column for easier querying/reporting
+                analysis.score = score
             except Exception as math_err:
                 current_app.logger.warning(f"Score recalculation failed: {math_err}")
                 
             # Update the analysis result with AI evaluation
             analysis.ai_summary = evaluation.get('ai_summary')
+            # Ensure the top-level score column is updated even if recalculation try-block was bypassed
+            if evaluation.get('score') is not None:
+                analysis.score = round(float(evaluation.get('score')), 1)
             
             # MERGE into nlp_results instead of overwriting to prevent data loss 
             # if local NLP analysis runs later.
@@ -1117,6 +1187,11 @@ class DashboardService:
             
             # Also store in ai_insights as the primary store for the DTO
             analysis.ai_insights = evaluation
+            
+            # Explicitly flag JSON columns as modified to ensure they are saved
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(analysis, 'ai_insights')
+            flag_modified(analysis, 'nlp_results')
             
             # Store AI-extracted group members into document_metadata
             if evaluation.get('group_members') and isinstance(evaluation['group_members'], list):

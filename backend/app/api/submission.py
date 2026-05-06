@@ -114,35 +114,47 @@ def perform_full_analysis(app, submission_id):
 
             db.session.commit()
             
-            # 3. AI Analysis
-            nlp_service = get_nlp_service()
-            local_results = nlp_service.perform_local_nlp_analysis(text)
+            # 3. AI Analysis & Evaluation
+            from app.services.dashboard_service import DashboardService
+            dashboard_service = DashboardService()
             
-            context = {}
+            rubric_id = None
             if submission.deadline_id:
                 from app.models import Deadline
                 deadline = Deadline.query.get(submission.deadline_id)
-                if deadline:
-                    context = {
-                        'assignment_type': deadline.assignment_type,
-                        'course_code': deadline.course_code
-                    }
+                if deadline and deadline.rubric_id:
+                    rubric_id = deadline.rubric_id
             
-            ai_summary, ai_error = nlp_service.generate_ai_summary(text, context)
-            
-            consolidated_results = local_results
-            if hasattr(nlp_service, 'consolidate_nlp_results'):
-                consolidated_results, _ = nlp_service.consolidate_nlp_results(local_results, ai_summary)
+            if rubric_id:
+                # Perform full rubric-based evaluation immediately
+                app.logger.info(f"Triggering automatic rubric-based evaluation for submission {submission_id} with rubric {rubric_id}")
+                dashboard_service.evaluate_submission(submission.id, rubric_id, submission.professor_id)
+            else:
+                # Fallback to simple AI summary if no rubric is assigned
+                app.logger.info(f"No rubric assigned to deadline. Performing simple AI summary for submission {submission_id}")
+                nlp_service = get_nlp_service()
+                local_results = nlp_service.perform_local_nlp_analysis(text)
                 
-            analysis.nlp_results = consolidated_results
-            if ai_summary:
-                analysis.ai_summary = ai_summary.get('summary')
-                analysis.ai_insights = ai_summary
+                context = {
+                    'assignment_type': deadline.assignment_type if submission.deadline_id and deadline else 'Document',
+                    'course_code': deadline.course_code if submission.deadline_id and deadline else 'N/A'
+                }
                 
-            if 'readability' in local_results and local_results['readability']:
-                analysis.flesch_kincaid_score = local_results['readability'].get('grade_level')
-                analysis.readability_grade = local_results['readability'].get('reading_level')
+                ai_summary, ai_error = nlp_service.generate_ai_summary(text, context)
                 
+                consolidated_results = local_results
+                if hasattr(nlp_service, 'consolidate_nlp_results'):
+                    consolidated_results, _ = nlp_service.consolidate_nlp_results(local_results, ai_summary)
+                    
+                analysis.nlp_results = consolidated_results
+                if ai_summary:
+                    analysis.ai_summary = ai_summary.get('summary')
+                    analysis.ai_insights = ai_summary
+                    
+                if 'readability' in local_results and local_results['readability']:
+                    analysis.flesch_kincaid_score = local_results['readability'].get('grade_level')
+                    analysis.readability_grade = local_results['readability'].get('reading_level')
+                    
             submission.status = SubmissionStatus.COMPLETED
             submission.processing_completed_at = datetime.utcnow()
             db.session.commit()

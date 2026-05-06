@@ -1565,6 +1565,51 @@
   background: linear-gradient(180deg, #ffffff 0%, #fff9fb 100%);
 }
 
+.dual-modal-overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+.dual-modal-content {
+  display: flex;
+  gap: 1.5rem;
+  width: min(96vw, 1200px);
+  max-height: 92vh;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dual-modal-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+}
+
+.dual-modal-panel .folder-form-modal,
+.dual-modal-panel .rubric-editor-modal-v4 {
+  width: 100%;
+  max-width: 100%;
+  max-height: 92vh;
+}
+
+.rubric-editor-inline {
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+@media (max-width: 1024px) {
+  .dual-modal-content {
+    flex-direction: column;
+    max-height: 94vh;
+    overflow: auto;
+  }
+
+  .dual-modal-panel {
+    width: 100%;
+  }
+}
+
 .folder-form-header {
   border-bottom: 1px solid #ebeef2;
   padding: 1.15rem 1.5rem;

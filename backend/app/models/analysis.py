@@ -33,6 +33,7 @@ class AnalysisResult(BaseModel):
     # AI-generated insights
     ai_summary = db.Column(Text, nullable=True)
     ai_insights = db.Column(JSON, nullable=True)
+    score = db.Column(db.Float, nullable=True)
     
     # Rubric evaluation tracking (for caching/reuse optimization)
     last_evaluated_rubric_id = db.Column(db.String(36), nullable=True)
@@ -75,6 +76,7 @@ class AnalysisResult(BaseModel):
             'top_terms': _ensure_dict(self.top_terms),
             'ai_summary': self.ai_summary,
             'ai_insights': _ensure_dict(self.ai_insights),
+            'score': self.score,
             'is_complete_document': self.is_complete_document,
             'validation_warnings': _ensure_dict(self.validation_warnings),
             'analysis_version': self.analysis_version,

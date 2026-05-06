@@ -670,7 +670,7 @@ const Dashboard = () => {
 
       <div className="dashboard-section">
         <div className="section-header">
-          <h2>Recent Submission</h2>
+          <h2>Recent Documents</h2>
           <button
             className="btn btn-ghost btn-sm"
             onClick={() => navigate('/dashboard/reports')}

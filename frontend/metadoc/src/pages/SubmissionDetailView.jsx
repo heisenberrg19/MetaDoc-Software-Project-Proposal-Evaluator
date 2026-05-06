@@ -49,6 +49,43 @@ const normalizeContributorRole = (role) => {
   return 'Editor';
 };
 
+const formatScore = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return 'N/A';
+  return String(Math.round(numericValue));
+};
+
+const getFinalScore = (analysis) => {
+  if (!analysis) return 0;
+  const baseScore = Number(analysis.original_score);
+  const penalty = Number(analysis.late_penalty || 0);
+
+  if (analysis.late_penalty > 0 && Number.isFinite(baseScore)) {
+    return Math.max(0, baseScore - penalty);
+  }
+
+  const scoreValue = Number(analysis.score || 0);
+  return Number.isFinite(scoreValue) ? scoreValue : 0;
+};
+
+const extractReferences = (text) => {
+  if (!text) return null;
+  const headerRegex = /\n\s*(references|bibliography|works cited)\s*\n/gi;
+  let match;
+  let lastIndex = -1;
+  let lastMatchLength = 0;
+
+  while ((match = headerRegex.exec(text)) !== null) {
+    lastIndex = match.index;
+    lastMatchLength = match[0].length;
+  }
+
+  if (lastIndex == -1) return null;
+
+  const referencesText = text.slice(lastIndex + lastMatchLength).trim();
+  return referencesText ? referencesText : null;
+};
+
 
 const SubmissionDetailView = () => {
   const { id } = useParams();
@@ -64,6 +101,7 @@ const SubmissionDetailView = () => {
   const [analysisError, setAnalysisError] = useState(null);
   const hasAttemptedAutoAnalysis = useRef(false);
   const lastEvaluationTime = useRef(0);
+  const [referenceVisibility, setReferenceVisibility] = useState({});
   const DEBOUNCE_DELAY = 500; // milliseconds
 
   // Define handleRunAIEvaluation with useCallback BEFORE any returns
@@ -335,6 +373,7 @@ const SubmissionDetailView = () => {
   };
 
   const analysis = submission?.analysis_result;
+  const referencesText = extractReferences(analysis?.document_text);
 
   return (
     <div className="detail-page">
@@ -476,29 +515,19 @@ const SubmissionDetailView = () => {
                 {(() => {
                   let contributors = [];
 
-                  // 1. Start with AI-extracted members if available
-                  if (analysis.document_metadata.group_members && analysis.document_metadata.group_members.length > 0) {
-                    analysis.document_metadata.group_members.forEach(name => {
-                      contributors.push({
-                        name: name,
-                        role: 'Member',
-                        date: null // AI extraction doesn't usually give specific activity dates per name
-                      });
-                    });
-                  }
-
-                  // 2. Add/Merge metadata-based contributors
-                  const metaContributors = analysis.document_metadata.contributors || [];
+                  // Only use metadata-based contributors. If none, show Unavailable.
+                  const metaContributors = analysis.document_metadata?.contributors || [];
                   if (metaContributors.length > 0) {
                     metaContributors.forEach(c => {
-                      // Try to avoid duplicates if name is already there
+                      if (!c || (!c.name && !c.email)) return;
+
+                      const normalizedName = (c.name || '').toLowerCase();
                       const existing = contributors.find(existingC =>
-                        existingC.name.toLowerCase() === (c.name || '').toLowerCase() ||
+                        (existingC.name || '').toLowerCase() === normalizedName ||
                         (c.email && existingC.email === c.email)
                       );
 
                       if (existing) {
-                        // Enrich existing with metadata info
                         if (c.role && c.role !== 'Member') existing.role = c.role;
                         if (c.date) existing.date = c.date;
                         if (c.email) existing.email = c.email;
@@ -507,35 +536,6 @@ const SubmissionDetailView = () => {
                         contributors.push(c);
                       }
                     });
-                  } else {
-                    // Fallback to basic author/editor if no contributors list
-                    if (analysis.document_metadata.author) {
-                      const existing = contributors.find(e => e.name.toLowerCase() === analysis.document_metadata.author.toLowerCase());
-                      if (existing) {
-                        existing.role = 'Author';
-                        existing.date = analysis.document_metadata.created_date || analysis.document_metadata.creation_date;
-                      } else {
-                        contributors.push({
-                          name: analysis.document_metadata.author,
-                          role: 'Author',
-                          date: analysis.document_metadata.created_date || analysis.document_metadata.creation_date,
-                        });
-                      }
-                    }
-                    if (analysis.document_metadata.last_editor &&
-                      analysis.document_metadata.last_editor !== analysis.document_metadata.author) {
-                      const existing = contributors.find(e => e.name.toLowerCase() === analysis.document_metadata.last_editor.toLowerCase());
-                      if (existing) {
-                        existing.role = 'Editor';
-                        existing.date = analysis.document_metadata.modified_date || analysis.document_metadata.last_modified_date;
-                      } else {
-                        contributors.push({
-                          name: analysis.document_metadata.last_editor,
-                          role: 'Editor',
-                          date: analysis.document_metadata.modified_date || analysis.document_metadata.last_modified_date,
-                        });
-                      }
-                    }
                   }
 
                   return contributors.length > 0 ? (
@@ -600,7 +600,7 @@ const SubmissionDetailView = () => {
                       );
                     })
                   ) : (
-                    <p className="text-muted">No contributor information available</p>
+                    <p className="text-muted">Unavailable</p>
                   );
                 })()}
               </div>
@@ -639,33 +639,59 @@ const SubmissionDetailView = () => {
             <div className="space-y-8">
               {/* Premium Overall Score Section */}
               {analysis && !isAnalyzing && (
-                <div className="ai-overall-score-container">
-                  <div className="ai-score-text-content">
-                    <h4 className="ai-overall-score-label">OVERALL SCORE</h4>
-                    <p className="ai-overall-score-subtext">Aggregated across all evaluation criteria.</p>
-                  </div>
-                  <div className="ai-score-visual-wrapper">
-                    <div className="score-circle-container">
-                      <svg viewBox="0 0 100 100" className="score-svg">
-                        <circle cx="50" cy="50" r="45" className="score-circle-bg" />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          className="score-circle-fg"
-                          style={{
-                            strokeDasharray: '282.7',
-                            strokeDashoffset: 282.7 - (282.7 * (analysis?.score || 0) / 100)
-                          }}
-                        />
-                      </svg>
-                      <div className="score-display">
-                        <span className="score-main">{Math.round(analysis?.score || 0)}</span>
-                        <span className="score-denominator">/ 100</span>
+                <>
+                  <div className="ai-overall-score-container">
+                    <div className="ai-score-text-content">
+                      <h4 className="ai-overall-score-label">OVERALL SCORE</h4>
+                      <p className="ai-overall-score-subtext">Aggregated across all evaluation criteria.</p>
+                      {analysis?.ai_score !== undefined && analysis?.ai_score !== null && (
+                        <p className="ai-overall-score-subtext" style={{ marginTop: '0.25rem' }}>
+                          AI score: <strong>{formatScore(analysis.ai_score)}</strong>
+                        </p>
+                      )}
+                      
+                      {analysis?.late_penalty > 0 && (
+                        <div className="score-breakdown-box">
+                          <div className="breakdown-row">
+                            <span>Base Grade:</span>
+                            <span className="font-bold">{formatScore(analysis.original_score)}</span>
+                          </div>
+                          <div className="breakdown-row text-error">
+                            <span>Late Deduction ({analysis.days_late || 0} day{analysis.days_late !== 1 ? 's' : ''} late):</span>
+                            <span className="font-bold">-{analysis.late_penalty}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="ai-score-visual-wrapper">
+                      <div className="score-circle-container">
+                        <svg viewBox="0 0 100 100" className="score-svg">
+                          <circle cx="50" cy="50" r="45" className="score-circle-bg" />
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="45"
+                            className="score-circle-fg"
+                            style={{
+                              strokeDasharray: '282.7',
+                              strokeDashoffset: 282.7 - (282.7 * getFinalScore(analysis) / 100)
+                            }}
+                          />
+                        </svg>
+                        <div className="score-display">
+                          {analysis?.late_penalty > 0 && (
+                            <span className="original-score-strikethrough" title="Original Score before penalty">
+                              {formatScore(analysis.original_score)}
+                            </span>
+                          )}
+                          <span className="score-main">{formatScore(getFinalScore(analysis))}</span>
+                          <span className="score-denominator">/ 100</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                  
+                </>
               )}
 
               {isAnalyzing || showSuccessModal || analysisError ? (
@@ -769,7 +795,7 @@ const SubmissionDetailView = () => {
                               </div>
                               <div className="flex flex-col items-end">
                                 <div className={`text-lg font-bold ${eval_item.contribution_score >= 80 ? 'text-green-600' : eval_item.contribution_score >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
-                                  {eval_item.contribution_score}%
+                                  {formatScore(eval_item.contribution_score)}%
                                 </div>
                                 <div className="text-[10px] uppercase text-gray-400 font-bold">Contribution</div>
                               </div>
@@ -796,13 +822,29 @@ const SubmissionDetailView = () => {
                                   {(index + 1)}
                                 </span>
                                 <h4 className="ai-criterion-name">{item.criterion_name}</h4>
+                                {referencesText && /references|bibliography|works cited/i.test(item.criterion_name || '') && (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={() => setReferenceVisibility(prev => ({
+                                      ...prev,
+                                      [index]: !prev[index]
+                                    }))}
+                                  >
+                                    {referenceVisibility[index] ? 'Hide references' : 'See more'}
+                                  </button>
+                                )}
                               </div>
                               <p className="ai-criterion-feedback">
                                 {item.feedback}
                               </p>
+                              {referenceVisibility[index] && referencesText && (
+                                <div className="ai-references-text">
+                                  {referencesText}
+                                </div>
+                              )}
                             </div>
                             <div className="ai-criterion-score">
-                              <div className="ai-score-val">{item.score}</div>
+                              <div className="ai-score-val">{formatScore(item.score)}</div>
                               <div className="ai-score-label">SCORE / 100</div>
                             </div>
                           </div>

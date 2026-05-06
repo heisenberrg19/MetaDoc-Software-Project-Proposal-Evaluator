@@ -358,6 +358,10 @@ const Deliverable = () => {
 
     const payload = {
       ...folderFormData,
+      // Convert to ISO string (UTC) to ensure consistent timezone handling between frontend and backend
+      deadline_datetime: new Date(folderFormData.deadline_datetime).toISOString(),
+      // Send the user's current timezone name if not already set
+      timezone: folderFormData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
     };
 
     try {
@@ -1207,11 +1211,32 @@ const Deliverable = () => {
 
       {/* Folder Modal */}
       {showFolderModal && (
-        <div className="modal-overlay" onClick={() => setShowFolderModal(false)}>
-          <div className="modal-content folder-form-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className={`modal-overlay${isRubricModalOpen ? ' dual-modal-overlay' : ''}`}
+          onClick={() => {
+            setShowFolderModal(false);
+            setIsRubricModalOpen(false);
+            setRubricToEdit(null);
+          }}
+        >
+          <div
+            className={isRubricModalOpen ? 'dual-modal-content' : 'modal-content folder-form-modal'}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={isRubricModalOpen ? 'dual-modal-panel' : ''}>
+              <div className="modal-content folder-form-modal">
             <div className="modal-header folder-form-header">
               <h2 className="folder-form-title">{editingFolder ? 'Edit Deliverable' : 'Create New Deliverable'}</h2>
-              <button type="button" className="btn-close folder-form-close" aria-label="Close deliverable form" onClick={() => setShowFolderModal(false)}>
+              <button
+                type="button"
+                className="btn-close folder-form-close"
+                aria-label="Close deliverable form"
+                onClick={() => {
+                  setShowFolderModal(false);
+                  setIsRubricModalOpen(false);
+                  setRubricToEdit(null);
+                }}
+              >
                 <X size={20} className="icon-close" />
               </button>
             </div>
@@ -1329,6 +1354,43 @@ const Deliverable = () => {
                 </button>
               </div>
             </form>
+              </div>
+            </div>
+            {isRubricModalOpen && (
+              <div className="dual-modal-panel dual-modal-panel-right">
+                <RubricEditorModal
+                  isOpen={isRubricModalOpen}
+                  onClose={() => {
+                    setIsRubricModalOpen(false);
+                    setRubricToEdit(null);
+                  }}
+                  rubricToEdit={rubricToEdit}
+                  onSave={async (newRubric) => {
+                    try {
+                      if (rubricToEdit) {
+                        // Update existing rubric
+                        const response = await rubricAPI.updateRubric(rubricToEdit.id, newRubric);
+                        const updatedRubric = response.data;
+                        setRubrics(prev => prev.map(r => r.id === updatedRubric.id ? updatedRubric : r));
+                      } else {
+                        // Create new rubric
+                        const response = await rubricAPI.createRubric(newRubric);
+                        const savedRubric = response.data;
+                        setRubrics(prev => [...prev, savedRubric]);
+                        setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+                      }
+                      setIsRubricModalOpen(false);
+                      setRubricToEdit(null);
+                    } catch (err) {
+                      console.error("Failed to save rubric from Deliverable view", err);
+                      setIsRubricModalOpen(false);
+                      setRubricToEdit(null);
+                    }
+                  }}
+                  inline
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1349,37 +1411,38 @@ const Deliverable = () => {
         </div>
       )}
 
-      <RubricEditorModal
-        isOpen={isRubricModalOpen}
-        onClose={() => {
-          setIsRubricModalOpen(false);
-          setRubricToEdit(null);
-        }}
-        rubricToEdit={rubricToEdit}
-        onSave={async (newRubric) => {
-          try {
-            if (rubricToEdit) {
-              // Update existing rubric
-              const response = await rubricAPI.updateRubric(rubricToEdit.id, newRubric);
-              const updatedRubric = response.data;
-              setRubrics(prev => prev.map(r => r.id === updatedRubric.id ? updatedRubric : r));
-            } else {
-              // Create new rubric
-              const response = await rubricAPI.createRubric(newRubric);
-              const savedRubric = response.data;
-              setRubrics(prev => [...prev, savedRubric]);
-              setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+      {!showFolderModal && (
+        <RubricEditorModal
+          isOpen={isRubricModalOpen}
+          onClose={() => {
+            setIsRubricModalOpen(false);
+            setRubricToEdit(null);
+          }}
+          rubricToEdit={rubricToEdit}
+          onSave={async (newRubric) => {
+            try {
+              if (rubricToEdit) {
+                // Update existing rubric
+                const response = await rubricAPI.updateRubric(rubricToEdit.id, newRubric);
+                const updatedRubric = response.data;
+                setRubrics(prev => prev.map(r => r.id === updatedRubric.id ? updatedRubric : r));
+              } else {
+                // Create new rubric
+                const response = await rubricAPI.createRubric(newRubric);
+                const savedRubric = response.data;
+                setRubrics(prev => [...prev, savedRubric]);
+                setFolderFormData(prev => ({ ...prev, rubric_id: savedRubric.id }));
+              }
+              setIsRubricModalOpen(false);
+              setRubricToEdit(null);
+            } catch (err) {
+              console.error("Failed to save rubric from Deliverable view", err);
+              setIsRubricModalOpen(false);
+              setRubricToEdit(null);
             }
-            setIsRubricModalOpen(false);
-            setRubricToEdit(null);
-          } catch (err) {
-            console.error("Failed to save rubric from Deliverable view", err);
-            // Local fallback logic (optional, keeping it simple for now)
-            setIsRubricModalOpen(false);
-            setRubricToEdit(null);
-          }
-        }}
-      />
+          }}
+        />
+      )}
     </div>
   );
 };

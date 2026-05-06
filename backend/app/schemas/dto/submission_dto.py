@@ -193,6 +193,21 @@ class SubmissionListDTO:
         if word_count is not None:
             data['analysis_summary'] = {'word_count': word_count}
         
+        # Add score if available in analysis result
+        if hasattr(submission, 'analysis_result') and submission.analysis_result:
+            if hasattr(submission.analysis_result, 'score') and submission.analysis_result.score is not None:
+                data['score'] = submission.analysis_result.score
+            elif submission.analysis_result.ai_insights:
+                import json
+                try:
+                    insights = submission.analysis_result.ai_insights
+                    if isinstance(insights, str):
+                        insights = json.loads(insights)
+                    if insights and insights.get('score') is not None:
+                        data['score'] = insights.get('score')
+                except:
+                    pass
+        
         return data
     
     @staticmethod

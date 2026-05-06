@@ -148,7 +148,11 @@ class AnalysisResultDTO:
             
             # AI evaluation fields
             'ai_summary': analysis.ai_summary or eval_source.get('ai_summary'),
-            'score': eval_source.get('score'),
+            'ai_score': eval_source.get('ai_score', eval_source.get('score')),
+            'score': analysis.score if hasattr(analysis, 'score') and analysis.score is not None else eval_source.get('score'),
+            'late_penalty': eval_source.get('late_penalty'),
+            'original_score': eval_source.get('original_score'),
+            'days_late': eval_source.get('days_late'),
             'rubric_evaluation': eval_source.get('rubric_evaluation', []),
             'strengths': eval_source.get('strengths', []),
             'weaknesses': eval_source.get('weaknesses', []),

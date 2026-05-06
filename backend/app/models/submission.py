@@ -49,28 +49,48 @@ class Submission(BaseModel):
     @property
     def is_late(self):
         """Check if submission was made after the deadline"""
+        return self.get_days_late() > 0
+
+    def get_days_late(self):
+        """
+        Calculate how many days late the submission is.
+        Returns 0 if on time or no deadline.
+        Returns fractional days (e.g. 1.2) if late.
+        """
         try:
             if not self.deadline_id:
-                return False
+                return 0
             from app.models.deadline import Deadline
             deadline = Deadline.query.filter_by(id=self.deadline_id).first()
             if not deadline:
-                return False
+                return 0
                 
-            created_at_utc = self.created_at.replace(tzinfo=pytz.UTC)
+            # Use the later of created_at (submission time) or file_modified_at (last edit time)
+            # This is essential for GDrive links to catch edits made after the deadline.
+            submission_time = self.created_at
+            if self.file_modified_at and self.file_modified_at > submission_time:
+                submission_time = self.file_modified_at
+                
+            created_at_utc = submission_time.replace(tzinfo=pytz.UTC)
+            deadline_dt = deadline.deadline_datetime
             
             if deadline.timezone and deadline.timezone != 'UTC':
                 try:
                     local_tz = pytz.timezone(deadline.timezone)
-                    deadline_aware = local_tz.localize(deadline.deadline_datetime)
+                    deadline_aware = local_tz.localize(deadline_dt)
                     deadline_utc = deadline_aware.astimezone(pytz.UTC)
-                    return created_at_utc > deadline_utc
                 except Exception:
-                    pass
+                    deadline_utc = deadline_dt.replace(tzinfo=pytz.UTC)
+            else:
+                deadline_utc = deadline_dt.replace(tzinfo=pytz.UTC)
             
-            return self.created_at > deadline.deadline_datetime
+            if created_at_utc <= deadline_utc:
+                return 0
+                
+            diff = created_at_utc - deadline_utc
+            return diff.total_seconds() / 86400.0
         except Exception:
-            return False
+            return 0
     
     @property
     def last_modified(self):
