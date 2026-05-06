@@ -118,9 +118,37 @@ class NLPResultDTO:
 
 class AnalysisResultDTO:
     """DTO for complete analysis result serialization"""
-    
+
     @staticmethod
-    def serialize(analysis, include_full_text: bool = False) -> Dict[str, Any]:
+    def _compute_late_penalty(days_late_float: float):
+        from math import ceil
+        hours_late = days_late_float * 24
+        if hours_late < 1:
+            penalty = 2
+        elif hours_late < 24:
+            penalty = 4.5
+        elif hours_late < 48:
+            penalty = 7.5
+        elif hours_late < 72:
+            penalty = 10
+        else:
+            penalty = 25
+
+        hours = int(hours_late)
+        minutes = int((hours_late - hours) * 60)
+        if hours > 0:
+            late_status = f"{hours}hr {minutes}min late"
+        else:
+            late_status = f"{minutes}min late"
+
+        return {
+            'late_penalty': penalty,
+            'days_late': ceil(days_late_float),
+            'late_status': late_status
+        }
+
+    @staticmethod
+    def serialize(analysis, submission=None, include_full_text: bool = False) -> Dict[str, Any]:
         """Serialize AnalysisResult model"""
         if not analysis:
             return None
@@ -153,6 +181,7 @@ class AnalysisResultDTO:
             'late_penalty': eval_source.get('late_penalty'),
             'original_score': eval_source.get('original_score'),
             'days_late': eval_source.get('days_late'),
+            'late_status': eval_source.get('late_status'),
             'rubric_evaluation': eval_source.get('rubric_evaluation', []),
             'strengths': eval_source.get('strengths', []),
             'weaknesses': eval_source.get('weaknesses', []),
@@ -167,7 +196,24 @@ class AnalysisResultDTO:
             'created_at': analysis.created_at.isoformat() if hasattr(analysis, 'created_at') and analysis.created_at else None,
             'updated_at': analysis.updated_at.isoformat() if hasattr(analysis, 'updated_at') and analysis.updated_at else None
         }
-        
+
+        if not data.get('late_penalty') and submission is not None and hasattr(submission, 'get_days_late'):
+            late_days = submission.get_days_late()
+            if late_days > 0:
+                late_data = AnalysisResultDTO._compute_late_penalty(late_days)
+                if data.get('original_score') is None:
+                    data['original_score'] = data.get('score')
+                if data.get('score') is not None:
+                    try:
+                        base_score = float(data['score'])
+                    except (TypeError, ValueError):
+                        base_score = None
+                    if base_score is not None:
+                        data['score'] = round(max(0, base_score - late_data['late_penalty']), 1)
+                data['late_penalty'] = late_data['late_penalty']
+                data['days_late'] = late_data['days_late']
+                data['late_status'] = late_data['late_status']
+
         # fix: some json columns like top_terms/named_entities might actually be arrays, not dicts
         if analysis.named_entities and isinstance(analysis.named_entities, list):
             data['named_entities'] = analysis.named_entities

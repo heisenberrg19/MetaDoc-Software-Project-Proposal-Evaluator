@@ -1137,7 +1137,8 @@ class DashboardService:
                 base_score = raw_ai_score if raw_ai_score is not None else weighted_score
                 if base_score is None:
                     try:
-                        base_score = float(evaluation.get('score', 0) or 0)
+                        # Use original_score if available (for cached evaluations), else the score (for new evaluations)
+                        base_score = float(evaluation.get('original_score') or evaluation.get('score', 0) or 0)
                     except (TypeError, ValueError):
                         base_score = 0.0
                 score = round(base_score, 1)
@@ -1150,19 +1151,30 @@ class DashboardService:
                 import math
                 days_late_float = submission.get_days_late()
                 if days_late_float > 0:
-                    days_late = math.ceil(days_late_float)
+                    hours_late = days_late_float * 24
                     penalty = 0
-                    if days_late == 1:
-                        penalty = 5
-                    elif days_late == 2:
+                    if hours_late < 1:
+                        penalty = 2
+                    elif hours_late < 24:
+                        penalty = 4.5
+                    elif hours_late < 48:
+                        penalty = 7.5
+                    elif hours_late < 72:
                         penalty = 10
-                    elif days_late >= 3:
+                    else:
                         penalty = 25
                     
                     if penalty > 0:
                         evaluation['original_score'] = score
                         evaluation['late_penalty'] = penalty
-                        evaluation['days_late'] = days_late
+                        evaluation['days_late'] = math.ceil(days_late_float)  # Keep for compatibility
+                        # Calculate late status
+                        hours = int(hours_late)
+                        minutes = int((hours_late - hours) * 60)
+                        if hours > 0:
+                            evaluation['late_status'] = f"{hours}hr {minutes}min late"
+                        else:
+                            evaluation['late_status'] = f"{minutes}min late"
                         score = round(max(0, score - penalty), 1)
                 
                 evaluation['score'] = score

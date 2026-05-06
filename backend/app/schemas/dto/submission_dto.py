@@ -239,6 +239,13 @@ class SubmissionDetailDTO:
         submitted_at_value = getattr(submission, 'submitted_at', None) or submission.created_at
         submitted_at_iso = submitted_at_value.isoformat() if submitted_at_value else None
 
+        is_late_value = False
+        if hasattr(submission, 'is_late'):
+            try:
+                is_late_value = submission.is_late() if callable(submission.is_late) else bool(submission.is_late)
+            except Exception:
+                is_late_value = False
+
         data = {
             'id': submission.id,
             'job_id': submission.job_id,
@@ -254,7 +261,7 @@ class SubmissionDetailDTO:
             'student_name': submission.student_name,
             'semester': submission.semester,
             'status': submission.status.value if hasattr(submission.status, 'value') else submission.status,
-            'is_late': submission.is_late if hasattr(submission, 'is_late') else False,
+            'is_late': is_late_value,
             'created_at': created_at_iso,
             'submitted_at': _normalize_iso_datetime(submitted_at_value),
             'last_modified': last_modified_iso,
@@ -270,7 +277,7 @@ class SubmissionDetailDTO:
         
         if hasattr(submission, 'analysis_result') and submission.analysis_result:
             from .analysis_dto import AnalysisResultDTO
-            data['analysis_result'] = AnalysisResultDTO.serialize(submission.analysis_result, include_full_text=True)
+            data['analysis_result'] = AnalysisResultDTO.serialize(submission.analysis_result, submission=submission, include_full_text=True)
         
         if hasattr(submission, 'deadline') and submission.deadline:
             from .deadline_dto import DeadlineDTO

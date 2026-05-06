@@ -657,7 +657,7 @@ const SubmissionDetailView = () => {
                             <span className="font-bold">{formatScore(analysis.original_score)}</span>
                           </div>
                           <div className="breakdown-row text-error">
-                            <span>Late Deduction ({analysis.days_late || 0} day{analysis.days_late !== 1 ? 's' : ''} late):</span>
+                            <span>Late Deduction ({analysis.late_status || `${analysis.days_late || 0} day${analysis.days_late !== 1 ? 's' : ''} late`}):</span>
                             <span className="font-bold">-{analysis.late_penalty}</span>
                           </div>
                         </div>
