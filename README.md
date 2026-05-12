@@ -147,7 +147,56 @@ UPLOAD_FOLDER=uploads
 MAX_FILE_SIZE=52428800  # 50MB
 ```
 
-See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for detailed configuration.
+See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) and [README_DEVELOPMENT.md](README_DEVELOPMENT.md) for detailed configuration, tech stack, and deployment info.
+
+## 👤 Sample/Dummy Credentials (Testing)
+
+MetaDoc primarily uses **Google OAuth 2.0** for secure authentication. For testing the system without using real accounts, the following dummy student accounts are pre-registered in the system. Since authentication is handled via Google OAuth, passwords for these accounts are left as `null`.
+
+### 🎓 Dummy Student Accounts
+| Username (Email) | Password | Role |
+|------------------|----------|------|
+| `mahinay.franciskyle@gmail.com` | `null` | Student |
+| `ashleeeskye@gmail.com` | `null` | Student |
+| `josefcajes777@gmail.com` | `null` | Student |
+| `gemgemps@gmail.com` | `null` | Student |
+| `rcampilanan.reenahc@gmail.com` | `null` | Student |
+| `mikeljoshnicer@gmail.com` | `null` | Student |
+| `rubyxmanalo@gmail.com` | `null` | Student |
+| `kikikyleed@gmail.com` | `null` | Student |
+| `rafiki.abella@gmail.com` | `null` | Student |
+| `nicolaaiirabe@gmail.com` | `null` | Student |
+| `aquinojulianne.r@gmail.com` | `null` | Student |
+| `bramwellicer@gmail.com` | `null` | Student |
+| `jorgemartinn11@gmail.com` | `null` | Student |
+| `geraldezjunjie@gmail.com` | `null` | Student |
+| `michaelgrantlibato7@gmail.com` | `null` | Student |
+| `paulbibit05@gmail.com` | `null` | Student |
+| `ninaisabelletupas@gmail.com` | `null` | Student |
+| `rosalinakremer02@gmail.com` | `null` | Student |
+| `rodgabriellecanete2002@gmail.com` | `null` | Student |
+| `johannelumauag11@gmail.com` | `null` | Student |
+| `abdurrauf.oswa@gmail.com` | `null` | Student |
+| `bryekanesy@gmail.com` | `null` | Student |
+| `univdmax@gmail.com` | `null` | Student |
+| `sonephoenix46@gmail.com` | `null` | Student |
+| `cordovajohann54@gmail.com` | `null` | Student |
+| `chanlance.school@gmail.com` | `null` | Student |
+| `mickeynaus004@gmail.com` | `null` | Student |
+| `andre.policios@gmail.com` | `null` | Student |
+| `villadareznn@gmail.com` | `null` | Student |
+| `lanticsev@gmail.com` | `null` | Student |
+| `mickeynaus004@gmail.com` | `null` | Student |
+| `jhecyleightolibasmando@gmail.com` | `null` | Student |
+| `castilloteodorojr@gmail.com` | `null` | Student |
+| `carloslofranco09123@gmail.com` | `null` | Student |
+| `termiral09@gmail.com` | `null` | Professor |
+| 
+
+### 👨‍🏫 Professor Accounts / Admin
+Professors authenticate via Google OAuth. To grant professor access:
+1. Sign in once with your Google account.
+2. Manually update the `role` in the `users` table to `professor` (if your domain is not in `ALLOWED_EMAIL_DOMAINS`).
 
 ## 🚢 Deployment
 
